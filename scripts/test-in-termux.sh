@@ -6,12 +6,16 @@ echo "== ধাপ ১: QEMU ইনস্টল =="
 pkg install -y qemu-system-aarch64-headless qemu-utils
 
 echo "== ধাপ ২: বাইনারি লোকেশন ও dependency চেক =="
-QEMU_BIN=$(which qemu-system-aarch64)
+QEMU_BIN=$(command -v qemu-system-aarch64)
 echo "বাইনারি: $QEMU_BIN"
-readelf -d "$QEMU_BIN" | grep -i "rpath\|runpath" || true
+if command -v readelf >/dev/null; then
+  readelf -d "$QEMU_BIN" | grep -i "rpath\|runpath" || true
+else
+  echo "(readelf নেই — 'pkg install binutils' দিয়ে ইনস্টল করলে RPATH দেখা যাবে, এটা optional)"
+fi
 echo ""
-echo "এই RPATH/RUNPATH-টাই বোঝায় কেন বাইনারিটা অন্য অ্যাপে সরাসরি কপি করলে চলবে না —"
-echo "এটা $PREFIX (Termux-এর নিজের prefix) থেকে shared library খুঁজবে।"
+echo "মূল কথা: এই বাইনারিটা \$PREFIX (Termux-এর নিজের prefix, $PREFIX)-এর"
+echo "shared library-র উপর নির্ভরশীল। তাই এটা অন্য অ্যাপে সরাসরি কপি করলে চলবে না।"
 
 echo "== ধাপ ৩: Debian arm64 cloud image ও UEFI firmware ডাউনলোড =="
 mkdir -p ~/vm-test && cd ~/vm-test
