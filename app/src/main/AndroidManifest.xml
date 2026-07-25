@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- SSH কনসোল শুধু 127.0.0.1-এ বাইন্ড থাকবে, তাই বাইরের নেটওয়ার্ক পারমিশন লাগে না -->
 
+    <!-- v0.1: Termux-এর ভেতরে VM চালানোর জন্য RUN_COMMAND পারমিশন
+         (Termux-এ allow-external-apps=true সেট করা থাকা লাগবে, README দেখুন) -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

@@ -18,6 +18,7 @@ echo "মূল কথা: এই বাইনারিটা \$PREFIX (Termux-�
 echo "shared library-র উপর নির্ভরশীল। তাই এটা অন্য অ্যাপে সরাসরি কপি করলে চলবে না।"
 
 echo "== ধাপ ৩: Debian arm64 cloud image ও UEFI firmware ডাউনলোড =="
+pkg install -y wget
 mkdir -p ~/vm-test && cd ~/vm-test
 wget -c https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-arm64.qcow2
 pkg install -y edk2-aarch64 2>/dev/null || echo "edk2-aarch64 প্যাকেজ না থাকলে ম্যানুয়ালি সংগ্রহ করতে হবে (নিচে নোট দেখুন)"

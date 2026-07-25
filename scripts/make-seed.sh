@@ -30,13 +30,15 @@ instance-id: vm-forge-01
 local-hostname: vm-forge
 EOF
 
-pkg install -y cdrtools 2>/dev/null || pkg install -y genisoimage 2>/dev/null
-if command -v mkisofs >/dev/null; then
+pkg install -y xorriso 2>/dev/null || pkg install -y cdrtools 2>/dev/null || pkg install -y genisoimage 2>/dev/null
+if command -v xorriso >/dev/null; then
+  xorriso -as mkisofs -output seed.iso -volid cidata -joliet -rock user-data meta-data
+elif command -v mkisofs >/dev/null; then
   mkisofs -output seed.iso -volid cidata -joliet -rock user-data meta-data
 elif command -v genisoimage >/dev/null; then
   genisoimage -output seed.iso -volid cidata -joliet -rock user-data meta-data
 else
-  echo "mkisofs/genisoimage কোনোটাই পাওয়া যায়নি — pkg install cdrtools দিয়ে ইনস্টল করুন"
+  echo "xorriso/mkisofs/genisoimage কোনোটাই পাওয়া যায়নি — pkg install xorriso দিয়ে ইনস্টল করুন"
   exit 1
 fi
 

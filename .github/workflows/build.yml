@@ -1,0 +1,37 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: চেকআউট
+        uses: actions/checkout@v4
+
+      - name: JDK 17 সেটআপ
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle সেটআপ
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Debug APK বিল্ড
+        run: gradle assembleDebug --stacktrace
+
+      - name: APK আপলোড (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-forge-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
