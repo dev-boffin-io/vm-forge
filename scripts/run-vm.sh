@@ -1,7 +1,7 @@
 #!/bin/bash
-# vm-forge অ্যাপের বাটন থেকে Termux RUN_COMMAND দিয়ে এই স্ক্রিপ্ট ট্রিগার হয়।
-# এটা ধরে নেয় test-in-termux.sh + make-seed.sh আগে একবার রান হয়ে গেছে
-# (অর্থাৎ ~/vm-test-এ qcow2, seed.iso, edk2 ফার্মওয়্যার সবই আছে)।
+# Triggered by the vm-forge app button via Termux RUN_COMMAND.
+# Assumes test-in-termux.sh + make-seed.sh have already been run once
+# (i.e. ~/vm-test already has the qcow2, seed.iso, and edk2 firmware).
 set -e
 
 VM_DIR="${PWD}"
@@ -10,17 +10,17 @@ SEED="$VM_DIR/seed.iso"
 FIRMWARE="$VM_DIR/edk2-aarch64-code.fd"
 
 if [ ! -f "$DISK" ] || [ ! -f "$FIRMWARE" ]; then
-    echo "❌ VM ফাইল পাওয়া যায়নি এই ডিরেক্টরিতে: $VM_DIR"
-    echo "প্রথমে scripts/test-in-termux.sh ও scripts/make-seed.sh চালিয়ে VM সেটআপ করুন।"
+    echo "❌ VM files not found in this directory: $VM_DIR"
+    echo "Run scripts/test-in-termux.sh and scripts/make-seed.sh first to set up the VM."
     exit 1
 fi
 
 ACCEL_FLAG=""
 if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-    echo "⚡ KVM পাওয়া গেছে — দ্রুত মোডে বুট হবে"
+    echo "⚡ KVM found — booting in fast mode"
     ACCEL_FLAG="-enable-kvm"
 else
-    echo "🐢 KVM নেই — TCG (সফটওয়্যার এমুলেশন) মোডে বুট হবে, একটু সময় লাগবে"
+    echo "🐢 No KVM — booting in TCG (software emulation) mode, this will take a bit"
 fi
 
 CMD=(qemu-system-aarch64 -M virt -cpu max -smp 2 -m 2048
@@ -33,10 +33,10 @@ CMD=(qemu-system-aarch64 -M virt -cpu max -smp 2 -m 2048
 if [ -n "$ACCEL_FLAG" ]; then
     CMD+=("$ACCEL_FLAG")
 fi
-# seed.iso শুধু প্রথমবার লাগে (ইউজার/পাসওয়ার্ড সেট করতে); থাকলে যোগ করা হবে
+# seed.iso is only needed on first boot (to set the user/password); added if present
 if [ -f "$SEED" ]; then
     CMD+=(-cdrom "$SEED")
 fi
 
-echo "চালু হচ্ছে: ${CMD[*]}"
+echo "Starting: ${CMD[*]}"
 "${CMD[@]}"

@@ -1,33 +1,34 @@
 #!/bin/bash
-# Termux-এ (proot-এর ভেতরে না, বেস Termux-এ) রান করুন
+# Run this in Termux (base Termux, not inside a proot)
 set -e
 
-echo "== ধাপ ১: QEMU ইনস্টল =="
+echo "== Step 1: Install QEMU =="
 pkg install -y qemu-system-aarch64-headless qemu-utils
 
-echo "== ধাপ ২: বাইনারি লোকেশন ও dependency চেক =="
+echo "== Step 2: Binary location and dependency check =="
 QEMU_BIN=$(command -v qemu-system-aarch64)
-echo "বাইনারি: $QEMU_BIN"
+echo "Binary: $QEMU_BIN"
 if command -v readelf >/dev/null; then
   readelf -d "$QEMU_BIN" | grep -i "rpath\|runpath" || true
 else
-  echo "(readelf নেই — 'pkg install binutils' দিয়ে ইনস্টল করলে RPATH দেখা যাবে, এটা optional)"
+  echo "(readelf not found — install with 'pkg install binutils' to see the RPATH, this is optional)"
 fi
 echo ""
-echo "মূল কথা: এই বাইনারিটা \$PREFIX (Termux-এর নিজের prefix, $PREFIX)-এর"
-echo "shared library-র উপর নির্ভরশীল। তাই এটা অন্য অ্যাপে সরাসরি কপি করলে চলবে না।"
+echo "Bottom line: this binary depends on shared libraries under \$PREFIX"
+echo "(Termux's own prefix, $PREFIX). That's why it won't run if copied"
+echo "directly into another app."
 
-echo "== ধাপ ৩: Debian arm64 cloud image ও UEFI firmware ডাউনলোড =="
+echo "== Step 3: Download Debian arm64 cloud image and UEFI firmware =="
 pkg install -y wget
 mkdir -p ~/vm-test && cd ~/vm-test
 wget -c https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-arm64.qcow2
-pkg install -y edk2-aarch64 2>/dev/null || echo "edk2-aarch64 প্যাকেজ না থাকলে ম্যানুয়ালি সংগ্রহ করতে হবে (নিচে নোট দেখুন)"
+pkg install -y edk2-aarch64 2>/dev/null || echo "edk2-aarch64 package not found — you may need to fetch it manually (see note below)"
 
-echo "== ধাপ ৪: ডিস্ক রিসাইজ (ডিফল্ট ইমেজ ছোট, ২GB+ বাড়ানো ভালো) =="
+echo "== Step 4: Resize the disk (the default image is small, growing by 8G+ helps) =="
 qemu-img resize debian-13-genericcloud-arm64.qcow2 +8G
 
 echo ""
-echo "সব রেডি থাকলে টেস্ট বুট করতে নিচের কমান্ড রান করুন:"
+echo "Once everything is ready, boot-test with:"
 echo "qemu-system-aarch64 -M virt -cpu max -smp 2 -m 2048 \\"
 echo "  -bios \$PREFIX/share/qemu/edk2-aarch64-code.fd \\"
 echo "  -drive file=debian-13-genericcloud-arm64.qcow2,if=virtio,format=qcow2 \\"

@@ -12,31 +12,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: চেকআউট
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: JDK 17 সেটআপ
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle সেটআপ
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Debug ও Release APK বিল্ড
+      - name: Build Debug and Release APKs
         run: gradle assembleDebug assembleRelease --stacktrace
 
-      - name: Debug APK আপলোড (artifact)
+      - name: Upload Debug APK (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: vm-forge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
-      - name: Release APK আপলোড (artifact, সরাসরি ইনস্টলযোগ্য)
+      - name: Upload Release APK (artifact, installs directly)
         uses: actions/upload-artifact@v4
         with:
           name: vm-forge-release-apk

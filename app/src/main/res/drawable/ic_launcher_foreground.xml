@@ -4,7 +4,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- সরল টার্মিনাল-স্টাইল আইকন: প্রম্পট চিহ্ন > আর কার্সার লাইন -->
+    <!-- Simple terminal-style icon: prompt arrow + cursor line -->
     <path
         android:fillColor="#7AA2F7"
         android:pathData="M30,40 L48,54 L30,68 Z" />

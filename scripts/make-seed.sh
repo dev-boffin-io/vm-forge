@@ -1,8 +1,8 @@
 #!/bin/bash
-# ব্যবহার: ./make-seed.sh
-# একটা cloud-init NoCloud seed ISO বানায়, যেটাতে র‍্যান্ডম পাসওয়ার্ড সেট করা থাকে।
-# এই ISO-টা QEMU-তে -cdrom দিয়ে বুট করালে প্রথমবার Debian cloud image
-# এই পাসওয়ার্ডটা ব্যবহার করবে (Kalidroid-এর মতো ফিক্সড root/kali না)।
+# Usage: ./make-seed.sh
+# Builds a cloud-init NoCloud seed ISO with a randomly generated password.
+# Boot this ISO in QEMU with -cdrom and, on first boot, the Debian cloud
+# image will use this password (instead of a fixed root/kali like Kalidroid).
 set -e
 
 VM_DIR="${1:-$HOME/vm-test}"
@@ -11,7 +11,7 @@ cd "$VM_DIR"
 
 PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
 
-cat > user-data <<EOF
+cat > user-data <<INNER_EOF
 #cloud-config
 hostname: vm-forge
 users:
@@ -23,12 +23,12 @@ users:
 ssh_pwauth: true
 chpasswd:
   expire: false
-EOF
+INNER_EOF
 
-cat > meta-data <<EOF
+cat > meta-data <<INNER_EOF
 instance-id: vm-forge-01
 local-hostname: vm-forge
-EOF
+INNER_EOF
 
 pkg install -y xorriso 2>/dev/null || pkg install -y cdrtools 2>/dev/null || pkg install -y genisoimage 2>/dev/null
 if command -v xorriso >/dev/null; then
@@ -38,13 +38,13 @@ elif command -v mkisofs >/dev/null; then
 elif command -v genisoimage >/dev/null; then
   genisoimage -output seed.iso -volid cidata -joliet -rock user-data meta-data
 else
-  echo "xorriso/mkisofs/genisoimage কোনোটাই পাওয়া যায়নি — pkg install xorriso দিয়ে ইনস্টল করুন"
+  echo "None of xorriso/mkisofs/genisoimage found — install with 'pkg install xorriso'"
   exit 1
 fi
 
 echo ""
-echo "seed.iso বানানো হয়েছে: $VM_DIR/seed.iso"
-echo "ইউজারনেম: sumit"
-echo "পাসওয়ার্ড:  $PASSWORD"
+echo "seed.iso created at: $VM_DIR/seed.iso"
+echo "Username: sumit"
+echo "Password: $PASSWORD"
 echo ""
-echo "এই পাসওয়ার্ডটা নিরাপদে সংরক্ষণ করুন — এটা আর কোথাও দেখানো হবে না।"
+echo "Save this password somewhere safe — it won't be shown again."

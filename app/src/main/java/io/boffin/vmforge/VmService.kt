@@ -9,9 +9,10 @@ import android.os.Build
 import android.os.IBinder
 
 /**
- * QEMU প্রসেসকে ফরগ্রাউন্ড সার্ভিসে চালায় যাতে Android মেমরি প্রেশারে
- * VM-কে হুট করে kill না করে দেয়। প্রসেস ম্যানেজমেন্ট (start/stop/log)
- * এখানে যোগ হবে — এই ফাইলটা এখনো স্কেলিটন।
+ * Path B (not yet implemented): runs the QEMU process as a foreground
+ * service so Android doesn't kill the VM under memory pressure.
+ * Process management (start/stop/log) will be added here — this file
+ * is still a skeleton, unused while v0.1 (Termux RUN_COMMAND) is active.
  */
 class VmService : Service() {
 
@@ -22,7 +23,7 @@ class VmService : Service() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId, "VM চলছে", NotificationManager.IMPORTANCE_LOW
+                channelId, "VM running", NotificationManager.IMPORTANCE_LOW
             )
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
@@ -31,7 +32,7 @@ class VmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = Notification.Builder(this, channelId)
             .setContentTitle("vm-forge")
-            .setContentText("VM চলছে ব্যাকগ্রাউন্ডে")
+            .setContentText("VM running in background")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .build()
         startForeground(1, notification)
@@ -41,7 +42,7 @@ class VmService : Service() {
             .redirectErrorStream(true)
             .start()
 
-        // TODO: qemuProcess.inputStream লগ হিসেবে UI-তে স্ট্রিম করা
+        // TODO: stream qemuProcess.inputStream to the UI as a log
         return START_STICKY
     }
 

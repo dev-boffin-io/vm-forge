@@ -14,7 +14,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // qemu-system-aarch64 বাইনারি ও সাপোর্টিং ফাইল ARM64 ডিভাইসের জন্যই
+        // qemu-system-aarch64 binary and supporting files are arm64-only
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -23,10 +23,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // v0.1: আলাদা রিলিজ কিস্টোর এখনো বানানো হয়নি, তাই আপাতত
-            // অটো-জেনারেটেড debug keystore দিয়েই সাইন করা হচ্ছে —
-            // এতে CI-তে বিল্ড হওয়া APK সরাসরি ফোনে ইনস্টল করা যাবে
-            // (production/Play Store-এর জন্য পরে আলাদা কিস্টোর লাগবে)
+            // v0.1: no dedicated release keystore yet, so release builds are
+            // signed with the auto-generated debug keystore for now — this
+            // lets CI-built APKs install directly on a phone.
+            // (a proper keystore will be needed for production/Play Store)
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -39,10 +39,10 @@ android {
         jvmTarget = "17"
     }
 
-    // qemu-system-aarch64, kernel image, ইত্যাদি বাইনারি এসেট এখানে যাবে:
+    // qemu-system-aarch64, kernel image, etc. will go here:
     // app/src/main/assets/qemu/
-    // app/src/main/jniLibs/arm64-v8a/  (QEMU-কে .so হিসেবে রিনেম করে রাখলে
-    //   Android Play/system স্ক্যানার এক্সিকিউটেবল ব্লক করে না)
+    // app/src/main/jniLibs/arm64-v8a/  (QEMU renamed to a .so so the
+    //   Android/Play system scanner doesn't block the executable)
 }
 
 dependencies {

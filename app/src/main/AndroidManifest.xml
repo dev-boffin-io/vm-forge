@@ -2,10 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- SSH কনসোল শুধু 127.0.0.1-এ বাইন্ড থাকবে, তাই বাইরের নেটওয়ার্ক পারমিশন লাগে না -->
+    <!-- The SSH console only binds to 127.0.0.1, so no external network permission is needed -->
 
-    <!-- v0.1: Termux-এর ভেতরে VM চালানোর জন্য RUN_COMMAND পারমিশন
-         (Termux-এ allow-external-apps=true সেট করা থাকা লাগবে, README দেখুন) -->
+    <!-- v0.1: RUN_COMMAND permission to run the VM inside Termux
+         (requires allow-external-apps=true in Termux, see README) -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <application
@@ -25,7 +25,7 @@
             </intent-filter>
         </activity>
 
-        <!-- QEMU প্রসেস ফরগ্রাউন্ডে চালু রাখার জন্য (ব্যাকগ্রাউন্ডে Android কিল করে দেয় না) -->
+        <!-- Keeps the QEMU process running in the foreground (path B, not yet used) -->
         <service
             android:name=".VmService"
             android:exported="false"

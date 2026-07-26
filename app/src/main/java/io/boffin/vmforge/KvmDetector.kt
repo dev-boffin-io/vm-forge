@@ -3,11 +3,12 @@ package io.boffin.vmforge
 import java.io.File
 
 /**
- * চেক করে এই ডিভাইসে হার্ডওয়্যার ভার্চুয়ালাইজেশন (/dev/kvm) অ্যাক্সেসযোগ্য কিনা।
- * বেশিরভাগ non-Pixel ডিভাইসে (MediaTek/Xiaomi ইত্যাদি) এটা থাকে না —
- * সেক্ষেত্রে QEMU সফটওয়্যার এমুলেশনে (TCG) চলবে, যেটা লক্ষণীয়ভাবে স্লো।
+ * Detects whether hardware virtualization (/dev/kvm) is accessible on this
+ * device. Most non-Pixel devices (MediaTek/Xiaomi, etc.) don't have it —
+ * in that case QEMU falls back to software emulation (TCG), which is
+ * noticeably slower.
  *
- * এই তথ্য ইউজারকে স্পষ্টভাবে জানানো হবে, লুকানো হবে না।
+ * This is surfaced to the user clearly, not hidden.
  */
 object KvmDetector {
 
@@ -24,22 +25,22 @@ object KvmDetector {
         if (!kvmNode.exists()) {
             return AccelResult(
                 mode = AccelMode.TCG,
-                reason = "এই ডিভাইসে /dev/kvm নেই — pKVM/AVF সাপোর্ট নেই। " +
-                    "VM সফটওয়্যার এমুলেশনে চলবে, স্বাভাবিকের চেয়ে অনেক স্লো হবে।"
+                reason = "No /dev/kvm on this device — no pKVM/AVF support. " +
+                    "The VM will run in software emulation, noticeably slower than normal."
             )
         }
 
         if (!kvmNode.canRead() || !kvmNode.canWrite()) {
             return AccelResult(
                 mode = AccelMode.TCG,
-                reason = "/dev/kvm আছে কিন্তু এই অ্যাপের অ্যাক্সেস পারমিশন নেই। " +
-                    "TCG (সফটওয়্যার) মোডে চলবে।"
+                reason = "/dev/kvm exists but this app doesn't have access to it. " +
+                    "Will run in TCG (software) mode."
             )
         }
 
         return AccelResult(
             mode = AccelMode.KVM,
-            reason = "হার্ডওয়্যার ভার্চুয়ালাইজেশন উপলব্ধ — VM নেটিভ স্পিডের কাছাকাছি চলবে।"
+            reason = "Hardware virtualization is available — the VM will run close to native speed."
         )
     }
 }

@@ -18,15 +18,23 @@ class MainActivity : AppCompatActivity() {
         val accel = KvmDetector.detect()
         val statusView = findViewById<TextView>(R.id.accelStatus)
         val startButton = findViewById<Button>(R.id.startVmButton)
+        val stopButton = findViewById<Button>(R.id.stopVmButton)
 
-        val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (দ্রুত)" else "🐢 TCG (সফটওয়্যার এমুলেশন, স্লো)"
+        val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (fast)" else "🐢 TCG (software emulation, slow)"
         statusView.text = "$label\n${accel.reason}"
 
-        // v0.1: Termux RUN_COMMAND দিয়ে VM চালু করে (path B বান্ডলিং এখনো বাকি)
-        startButton.text = "VM চালু করুন (Termux দিয়ে)"
+        // v0.1: VM start/stop is driven via Termux RUN_COMMAND (bundling is path B, still pending)
         startButton.setOnClickListener {
             if (TermuxVmController.hasPermission(this)) {
                 TermuxVmController.startVm(this)
+            } else {
+                TermuxVmController.requestPermission(this, RUN_COMMAND_PERMISSION_REQUEST)
+            }
+        }
+
+        stopButton.setOnClickListener {
+            if (TermuxVmController.hasPermission(this)) {
+                TermuxVmController.stopVm(this)
             } else {
                 TermuxVmController.requestPermission(this, RUN_COMMAND_PERMISSION_REQUEST)
             }
