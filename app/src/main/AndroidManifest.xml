@@ -8,6 +8,10 @@
          (requires allow-external-apps=true in Termux, see README) -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
+    <!-- Required for VmService (path B, standalone) to run as a foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -29,7 +33,11 @@
         <service
             android:name=".VmService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs a local QEMU virtual machine process" />
+        </service>
 
     </application>
 </manifest>
