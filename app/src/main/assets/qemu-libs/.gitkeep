@@ -1,0 +1,7 @@
+Place the files collected by scripts/collect-native-deps.sh here,
+keeping their exact (versioned) filenames, e.g.:
+  qemu-system-aarch64
+  edk2-aarch64-code.fd
+  libglib-2.0.so.0
+  libpixman-1.so.0
+  ...
