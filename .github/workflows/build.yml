@@ -26,12 +26,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Debug APK বিল্ড
-        run: gradle assembleDebug --stacktrace
+      - name: Debug ও Release APK বিল্ড
+        run: gradle assembleDebug assembleRelease --stacktrace
 
-      - name: APK আপলোড (artifact)
+      - name: Debug APK আপলোড (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: vm-forge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: Release APK আপলোড (artifact, সরাসরি ইনস্টলযোগ্য)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-forge-release-apk
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 14

@@ -23,6 +23,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // v0.1: আলাদা রিলিজ কিস্টোর এখনো বানানো হয়নি, তাই আপাতত
+            // অটো-জেনারেটেড debug keystore দিয়েই সাইন করা হচ্ছে —
+            // এতে CI-তে বিল্ড হওয়া APK সরাসরি ফোনে ইনস্টল করা যাবে
+            // (production/Play Store-এর জন্য পরে আলাদা কিস্টোর লাগবে)
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
