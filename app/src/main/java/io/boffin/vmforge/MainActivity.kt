@@ -1,5 +1,6 @@
 package io.boffin.vmforge
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Button
@@ -19,11 +20,13 @@ class MainActivity : AppCompatActivity() {
         val statusView = findViewById<TextView>(R.id.accelStatus)
         val startButton = findViewById<Button>(R.id.startVmButton)
         val stopButton = findViewById<Button>(R.id.stopVmButton)
+        val startStandaloneButton = findViewById<Button>(R.id.startStandaloneButton)
+        val stopStandaloneButton = findViewById<Button>(R.id.stopStandaloneButton)
 
         val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (fast)" else "🐢 TCG (software emulation, slow)"
         statusView.text = "$label\n${accel.reason}"
 
-        // v0.1: VM start/stop is driven via Termux RUN_COMMAND (bundling is path B, still pending)
+        // v0.1: VM start/stop is driven via Termux RUN_COMMAND
         startButton.setOnClickListener {
             if (TermuxVmController.hasPermission(this)) {
                 TermuxVmController.startVm(this)
@@ -31,13 +34,25 @@ class MainActivity : AppCompatActivity() {
                 TermuxVmController.requestPermission(this, RUN_COMMAND_PERMISSION_REQUEST)
             }
         }
-
         stopButton.setOnClickListener {
             if (TermuxVmController.hasPermission(this)) {
                 TermuxVmController.stopVm(this)
             } else {
                 TermuxVmController.requestPermission(this, RUN_COMMAND_PERMISSION_REQUEST)
             }
+        }
+
+        // Path B: fully standalone, no Termux dependency — runs the bundled
+        // QEMU + libs (from assets/qemu-libs) via VmService/NativeVmLauncher.
+        // Needs rootfs.qcow2 and seed.iso to already be present in
+        // filesDir/vm/ (not downloaded by the app yet — copy them there
+        // manually for now, e.g. via adb push, until a proper setup flow
+        // is added).
+        startStandaloneButton.setOnClickListener {
+            startForegroundService(Intent(this, VmService::class.java))
+        }
+        stopStandaloneButton.setOnClickListener {
+            stopService(Intent(this, VmService::class.java))
         }
     }
 

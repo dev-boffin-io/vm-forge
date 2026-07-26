@@ -77,11 +77,21 @@ for shared libraries (glib, pixman, etc.). Copying it straight into
    the script) + UEFI firmware — no separate kernel extraction needed
 3. ✅ ~~First-boot password~~ → `scripts/make-seed.sh` builds a cloud-init
    seed ISO and shows a random password
-4. ✅ ~~Start/stop control~~ → v0.1, via Termux RUN_COMMAND
-5. **Terminal UI:** add a terminal view to show the serial console output
+4. ✅ ~~Start/stop control (v0.1)~~ → via Termux RUN_COMMAND
+5. ✅ ~~Path B binary~~ → `scripts/collect-native-deps.sh` collects
+   qemu-system-aarch64 + all its transitive `.so` deps (bundled in
+   `assets/qemu-libs/`, ~130MB); `NativeVmLauncher.kt` extracts them and
+   sets `LD_LIBRARY_PATH` at launch instead of `DT_RUNPATH` — no
+   termux-packages cross-compile needed, since the binary already uses
+   `DT_RUNPATH` (checked after `LD_LIBRARY_PATH`)
+6. **Get rootfs.qcow2 + seed.iso into the standalone path:** the
+   "Start VM (standalone, no Termux)" button expects these already in
+   `filesDir/vm/` — for now, push them manually with
+   `adb push debian-13-genericcloud-arm64.qcow2 seed.iso
+   /data/data/io.boffin.vmforge/files/vm/` (requires `run-as` or a
+   debug build); a proper in-app download/setup flow is still needed
+7. **Terminal UI:** add a terminal view to show the serial console output
    inside the app (could reuse Termux's `TerminalView` library or code
    from the [[ReTerminal]] project)
-6. **Implement path B:** clone `termux-packages`, cross-compile QEMU and
-   its dependencies with a custom prefix, bundle into `jniLibs`
-7. **Verification:** an Android Studio (PC) build is the easiest way to
+8. **Verification:** an Android Studio (PC) build is the easiest way to
    verify a first `gradlew assembleDebug` locally

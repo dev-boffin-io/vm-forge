@@ -26,4 +26,18 @@
         android:layout_marginTop="12dp"
         android:text="Stop VM" />
 
+    <Button
+        android:id="@+id/startStandaloneButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Start VM (standalone, no Termux)" />
+
+    <Button
+        android:id="@+id/stopStandaloneButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Stop Standalone VM" />
+
 </LinearLayout>
