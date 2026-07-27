@@ -24,11 +24,12 @@ class NativeVmLauncher(private val context: Context) {
 
     /** Copies bundled assets into filesDir on first run (or if the asset list changed). */
     fun ensureExtracted() {
-        val assetFiles = context.assets.list("qemu-libs") ?: return
+        val assetSubPath = "qemu-libs"
+        val assetFiles = context.assets.list(assetSubPath) ?: return
         for (name in assetFiles) {
             val dest = File(nativeDir, name)
             if (dest.exists()) continue
-            context.assets.open("qemu-libs/$name").use { input ->
+            context.assets.open("$assetSubPath/$name").use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
             dest.setExecutable(true)
