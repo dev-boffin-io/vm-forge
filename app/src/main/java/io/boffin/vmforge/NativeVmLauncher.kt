@@ -4,44 +4,47 @@ import android.content.Context
 import java.io.File
 
 /**
- * Path B: extracts qemu-system-aarch64 and its bundled .so dependencies
- * from assets/qemu-libs/ (with their original, versioned filenames
- * preserved — e.g. "libglib-2.0.so.0") into the app's private files
- * directory, then launches QEMU with LD_LIBRARY_PATH pointing there.
+ * Path B: launches QEMU directly from the app's nativeLibraryDir, where
+ * Android's PackageManager already extracted it at install time (from
+ * app/src/main/jniLibs/arm64-v8a/).
  *
- * This works without a termux-packages cross-compile because the
- * binary's dynamic section uses DT_RUNPATH (not the older DT_RPATH) —
- * and the dynamic linker checks LD_LIBRARY_PATH before DT_RUNPATH.
- * See scripts/collect-native-deps.sh for how these files were collected.
+ * IMPORTANT: this deliberately does NOT copy binaries out of assets/ into
+ * filesDir at runtime and exec them from there — Android 10+ (API 29+)
+ * blocks executing (and even dlopen-mapping-as-executable) files that live
+ * in the app's writable private storage (W^X protection), regardless of
+ * chmod. nativeLibraryDir is specifically exempt because the system
+ * verifies and extracts those files itself at install time. See
+ * scripts/patch-for-jnilibs.sh for how the bundled binary/libs were
+ * renamed (to plain "libX.so" names, with patchelf fixing up SONAME/NEEDED
+ * references) to fit Android's jniLibs packaging convention.
+ *
+ * The UEFI firmware (edk2-aarch64-code.fd) is just data — never executed
+ * or mapped exec — so it's fine to keep in assets/qemu-libs/ and extract
+ * normally to filesDir.
  */
 class NativeVmLauncher(private val context: Context) {
 
-    private val nativeDir: File
-        get() = File(context.filesDir, "native").apply { mkdirs() }
+    private val nativeLibDir: File
+        get() = File(context.applicationInfo.nativeLibraryDir)
 
     private val vmDir: File
         get() = File(context.filesDir, "vm").apply { mkdirs() }
 
-    /** Copies bundled assets into filesDir on first run (or if the asset list changed). */
-    fun ensureExtracted() {
-        val assetSubPath = "qemu-libs"
-        val assetFiles = context.assets.list(assetSubPath) ?: return
-        for (name in assetFiles) {
-            val dest = File(nativeDir, name)
-            if (dest.exists()) continue
-            context.assets.open("$assetSubPath/$name").use { input ->
+    /** Copies the UEFI firmware (plain data, not executed) from assets on first run. */
+    private fun ensureFirmwareExtracted(): File {
+        val dest = File(vmDir, "edk2-aarch64-code.fd")
+        if (!dest.exists()) {
+            context.assets.open("qemu-libs/edk2-aarch64-code.fd").use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
-            dest.setExecutable(true)
         }
+        return dest
     }
 
     fun buildCommand(): List<String> {
-        ensureExtracted()
-
         val accel = KvmDetector.detect()
-        val qemuBinary = File(nativeDir, "qemu-system-aarch64")
-        val uefiCode = File(nativeDir, "edk2-aarch64-code.fd")
+        val qemuBinary = File(nativeLibDir, "libqemu_system_aarch64.so")
+        val uefiCode = ensureFirmwareExtracted()
         val disk = File(vmDir, "rootfs.qcow2")
         val seedIso = File(vmDir, "seed.iso")
 
@@ -67,12 +70,12 @@ class NativeVmLauncher(private val context: Context) {
         return cmd
     }
 
-    /** Launches QEMU with LD_LIBRARY_PATH pointing at the extracted bundled libs. */
+    /** Launches QEMU with LD_LIBRARY_PATH pointing at nativeLibraryDir (where all the bundled .so live). */
     fun start(): Process {
         val cmd = buildCommand()
         return ProcessBuilder(cmd)
             .redirectErrorStream(true)
-            .apply { environment()["LD_LIBRARY_PATH"] = nativeDir.absolutePath }
+            .apply { environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath }
             .start()
     }
 }

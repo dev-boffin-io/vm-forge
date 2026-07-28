@@ -16,9 +16,12 @@
 local.properties
 
 # Native libraries are generally build output and get ignored by default
-# Android .gitignore templates — but the ones under assets/qemu-libs/ are
-# intentionally committed source assets (collected via
-# scripts/collect-native-deps.sh), so explicitly un-ignore them:
+# Android .gitignore templates — but the ones under assets/qemu-libs/ and
+# jniLibs/ are intentionally committed source assets (collected via
+# scripts/collect-native-deps.sh and scripts/patch-for-jnilibs.sh), so
+# explicitly un-ignore them:
 !app/src/main/assets/qemu-libs/**
 !app/src/main/assets/qemu-libs/**/*.so
 !app/src/main/assets/qemu-libs/**/*.fd
+!app/src/main/jniLibs/**
+!app/src/main/jniLibs/**/*.so

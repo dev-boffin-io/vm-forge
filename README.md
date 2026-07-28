@@ -79,11 +79,20 @@ for shared libraries (glib, pixman, etc.). Copying it straight into
    seed ISO and shows a random password
 4. ✅ ~~Start/stop control (v0.1)~~ → via Termux RUN_COMMAND
 5. ✅ ~~Path B binary~~ → `scripts/collect-native-deps.sh` collects
-   qemu-system-aarch64 + all its transitive `.so` deps (bundled in
-   `assets/qemu-libs/`, ~130MB); `NativeVmLauncher.kt` extracts them and
-   sets `LD_LIBRARY_PATH` at launch instead of `DT_RUNPATH` — no
-   termux-packages cross-compile needed, since the binary already uses
-   `DT_RUNPATH` (checked after `LD_LIBRARY_PATH`)
+   qemu-system-aarch64 + all its transitive `.so` deps. **Important
+   correction:** these must live in `app/src/main/jniLibs/arm64-v8a/`
+   (extracted by PackageManager at install time), NOT `assets/` copied to
+   `filesDir` at runtime — Android 10+ blocks executing (and even
+   dlopen-mapping-as-executable) files from an app's writable private
+   storage (W^X protection), regardless of `chmod`. `scripts/patch-for-jnilibs.sh`
+   renames the versioned `.so` files (e.g. `libfoo.so.1` → `libfoo.so`)
+   and uses `patchelf` to fix up SONAME/NEEDED references so they still
+   resolve. `NativeVmLauncher.kt` launches straight from
+   `applicationInfo.nativeLibraryDir` with `LD_LIBRARY_PATH` set there —
+   no termux-packages cross-compile needed, since the binary uses
+   `DT_RUNPATH` (checked after `LD_LIBRARY_PATH`). The UEFI firmware
+   (`edk2-aarch64-code.fd`) is plain data, never executed, so it's fine
+   to keep in `assets/qemu-libs/` and extract normally.
 6. **Get rootfs.qcow2 + seed.iso into the standalone path:** the
    "Start VM (standalone, no Termux)" button expects these already in
    `filesDir/vm/` — for now, push them manually with
