@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="match_parent">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="24dp"
     android:gravity="center">
@@ -40,4 +44,26 @@
         android:layout_marginTop="12dp"
         android:text="Stop Standalone VM" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Import VM disk files (no adb needed):"
+        android:textSize="14sp" />
+
+    <Button
+        android:id="@+id/importDiskButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Import rootfs.qcow2" />
+
+    <Button
+        android:id="@+id/importSeedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Import seed.iso" />
+
 </LinearLayout>
+</ScrollView>

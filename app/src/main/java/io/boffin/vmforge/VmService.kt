@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.widget.Toast
 
 /**
  * Path B: runs the bundled, standalone QEMU (via NativeVmLauncher) as a
@@ -37,7 +38,12 @@ class VmService : Service() {
             .build()
         startForeground(1, notification)
 
-        qemuProcess = NativeVmLauncher(this).start()
+        try {
+            qemuProcess = NativeVmLauncher(this).start()
+        } catch (e: Exception) {
+            Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+            stopSelf()
+        }
 
         // TODO: stream qemuProcess.inputStream to the UI as a log
         return START_STICKY
