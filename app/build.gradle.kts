@@ -39,6 +39,16 @@ android {
         jvmTarget = "17"
     }
 
+    // qemu-system-aarch64 must exist as an actual extracted file on disk
+    // to be exec'd via ProcessBuilder — AGP's default (uncompressed,
+    // mmap'd directly from inside the APK) doesn't leave a real file at
+    // nativeLibraryDir, so force legacy (extract-to-disk) packaging:
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     // qemu-system-aarch64, kernel image, etc. will go here:
     // app/src/main/assets/qemu/
     // app/src/main/jniLibs/arm64-v8a/  (QEMU renamed to a .so so the
