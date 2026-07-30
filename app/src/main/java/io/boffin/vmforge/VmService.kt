@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
+import java.io.File
 
 /**
  * Path B: runs the bundled, standalone QEMU (via NativeVmLauncher) as a
@@ -18,6 +19,7 @@ import android.widget.Toast
 class VmService : Service() {
 
     private var qemuProcess: Process? = null
+    private var logThread: Thread? = null
     private val channelId = "vm_forge_running"
 
     override fun onCreate() {
@@ -40,17 +42,32 @@ class VmService : Service() {
 
         try {
             qemuProcess = NativeVmLauncher(this).start()
+            startLogging(qemuProcess!!)
         } catch (e: Exception) {
             Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
             stopSelf()
         }
 
-        // TODO: stream qemuProcess.inputStream to the UI as a log
         return START_STICKY
+    }
+
+    /** Continuously copies the QEMU process's combined stdout/stderr into vm/vm.log. */
+    private fun startLogging(process: Process) {
+        val logFile = File(File(filesDir, "vm"), "vm.log")
+        logThread = Thread {
+            try {
+                logFile.outputStream().use { out ->
+                    process.inputStream.copyTo(out)
+                }
+            } catch (_: Exception) {
+                // process ended / stream closed — nothing to do
+            }
+        }.apply { isDaemon = true; start() }
     }
 
     override fun onDestroy() {
         qemuProcess?.destroy()
+        logThread?.interrupt()
         super.onDestroy()
     }
 

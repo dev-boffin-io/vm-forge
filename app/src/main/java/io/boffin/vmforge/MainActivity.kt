@@ -104,6 +104,21 @@ class MainActivity : AppCompatActivity() {
             }
             startActivityForResult(intent, PICK_SEED_REQUEST)
         }
+
+        findViewById<Button>(R.id.viewLogButton).setOnClickListener {
+            val logFile = File(File(filesDir, "vm"), "vm.log")
+            val content = if (logFile.exists()) {
+                // Show only the tail — the full boot log can be long
+                logFile.readText().takeLast(6000)
+            } else {
+                "(no log yet — start the standalone VM first)"
+            }
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("VM Log (last part)")
+                .setMessage(content)
+                .setPositiveButton("Close", null)
+                .show()
+        }
     }
 
     @Deprecated("Deprecated in Java")
