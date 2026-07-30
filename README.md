@@ -1,106 +1,95 @@
 # vm-forge
 
 A self-built, trustworthy QEMU VM launcher for Android — a replacement
-for untrusted third-party APKs like Kalidroid. Not an Android port of
+for untrusted third-party APKs. Not an Android port of
 [Virt-Forge](../virt-forge) (which stays desktop-only); a separate project.
+Fully standalone — the app bundles its own QEMU binary and runs an ARM64
+Debian VM entirely on-device, no Termux dependency.
 
-## What's in this skeleton
+## What's in the app
 
 - `KvmDetector.kt` — checks whether `/dev/kvm` is accessible and tells the
   user plainly whether the VM will run in KVM (fast) or TCG (software
   emulation, slow) mode
-- `QemuLauncher.kt` — builds the QEMU command line for path B (standalone
-  bundling, not yet implemented); the SSH port is only forwarded to
-  `127.0.0.1` (never exposed externally), on a random local port
-- `VmService.kt` — foreground service so Android doesn't kill the VM
-  process in the background (path B, not yet used)
-- `MainActivity.kt` — shows the KVM/TCG status on launch, has Start/Stop
-  buttons
-- `TermuxVmController.kt` — v0.1: triggers VM start/stop inside Termux via
-  the `RUN_COMMAND` intent
+- `NativeVmLauncher.kt` — launches QEMU straight from
+  `applicationInfo.nativeLibraryDir` (where Android extracted the bundled
+  binary/libs at install time) with `LD_LIBRARY_PATH` set there
+- `VmService.kt` — foreground service that owns the running QEMU process;
+  bindable, so `TerminalActivity` can read/write its stdio directly
+- `MainActivity.kt` — shows KVM/TCG status, Start/Stop VM, Open Terminal,
+  and import buttons for the disk image + cloud-init seed
+- `TerminalActivity.kt` — a minimal interactive console for the VM's
+  serial output (ANSI codes stripped for readability; not a full
+  VT100 emulator — good for shell use, not for full-screen apps like
+  `top` or `vim`)
 
 ## GitHub Actions build
 
-`.github/workflows/build.yml` automatically builds a debug APK on every
-push/PR to `main`. Once the build finishes, go to the GitHub Actions tab
-and download `vm-forge-debug-apk` (or `vm-forge-release-apk`, which
-installs directly without extra setup) from that run's "Artifacts"
-section — no local Android Studio/PC setup required.
+`.github/workflows/build.yml` automatically builds debug and release APKs
+on every push/PR to `main`. Once the build finishes, go to the GitHub
+Actions tab and download `vm-forge-release-apk` (installs directly, no
+extra setup) from that run's "Artifacts" section — no local Android
+Studio/PC setup required.
 
-## v0.1 — usable right now (via Termux RUN_COMMAND)
+## Setting up the VM files
 
-Instead of bundling QEMU, the vm-forge app triggers the QEMU install
-already inside Termux. To set this up:
+The app needs three files in place before it can boot a VM: the Debian
+disk image, the UEFI firmware (bundled with the app already), and a
+cloud-init seed for the first-boot password. The disk image + seed are
+prepared once (on a PC or via Termux, since they need tools not worth
+bundling into the app itself) and then imported into the app:
 
-1. Add this line to `~/.termux/termux.properties` in Termux (create the
-   file if it doesn't exist):
-   ```
-   allow-external-apps=true
-   ```
-   Then fully close and reopen Termux (force-stop from settings, or
-   swipe it away and relaunch — a plain back-press won't reload the
-   property).
-2. Run `scripts/test-in-termux.sh` and `scripts/make-seed.sh` once to get
-   the VM files (qcow2, seed.iso, edk2 firmware) ready in `~/vm-test`
-   (skip if already done).
-3. Install and open the vm-forge app, tap "Start VM (via Termux)" — the
-   first time, it will ask for the RUN_COMMAND permission; allow it.
-4. A new Termux session opens where the VM boots (`scripts/run-vm.sh`
-   runs, with `~/vm-test` as its working directory).
-5. Tap "Stop VM" in the app to kill the running QEMU process
-   (`scripts/stop-vm.sh`, runs in the background — no new session
-   needed).
+1. Get a Debian arm64 cloud image and build a seed ISO — either:
+   - **Via Termux:** run `scripts/test-in-termux.sh` then
+     `scripts/make-seed.sh` (see "How the native binary was collected"
+     below for background) — produces `~/vm-test/debian-13-genericcloud-arm64.qcow2`
+     and `~/vm-test/seed.iso`
+   - Or prepare equivalent files any other way
+2. Copy both files to somewhere the app's file picker can reach, e.g.
+   `/sdcard/Download/` (`cp ~/vm-test/*.qcow2 ~/vm-test/seed.iso /sdcard/Download/`
+   in Termux)
+3. In the app, tap **"Import rootfs.qcow2"** and **"Import seed.iso"**,
+   picking each file from Downloads — this copies them into the app's
+   private storage under the exact names QEMU expects
+4. Tap **"Start VM"**, then **"Open Terminal"** to watch it boot and log in
+   (first-boot password is shown by `make-seed.sh` — save it, it's not
+   shown again)
 
-That's v0.1 — the VM runs as a Termux process, vm-forge just triggers it
-with a button. Path B (bundling QEMU directly into the app, no Termux
-dependency, fully standalone) will be built out gradually.
-
-## Why the QEMU binary can't just be copied over
+## How the native binary was collected (background, not needed day-to-day)
 
 The `qemu-system-aarch64` binary installed via `pkg install` in Termux is
 hard-linked to Termux's own prefix (`/data/data/com.termux/files/usr`)
-for shared libraries (glib, pixman, etc.). Copying it straight into
-`vm-forge` won't work. Two paths:
+for shared libraries (glib, pixman, etc.), so it can't be copied straight
+into another app. The process used to get a working standalone build:
 
-- **Path A (used to verify things first):** `scripts/test-in-termux.sh` —
-  boot-tests on-device using Termux's own QEMU, to confirm the image,
-  UEFI, and cloud-init setup all work. No app bundling involved.
-- **Path B (the real standalone app):** reconfigure `termux-packages`'
-  build scripts with `io.boffin.vmforge`'s own prefix, cross-compile, and
-  bundle the result (and all its dependency `.so` files) as
-  `app/src/main/jniLibs/arm64-v8a/libqemu_system_aarch64.so`.
+1. `scripts/test-in-termux.sh` — boot-tested the VM using Termux's own
+   QEMU first, to confirm the image/UEFI/cloud-init setup all work
+   before touching the app
+2. `scripts/collect-native-deps.sh` — collected `qemu-system-aarch64` and
+   all its transitive `.so` dependencies from Termux
+3. `scripts/patch-for-jnilibs.sh` — renamed the versioned `.so` files
+   (e.g. `libfoo.so.1` → `libfoo.so`) and used `patchelf` to fix up
+   SONAME/NEEDED references so they still resolve, then placed everything
+   in `app/src/main/jniLibs/arm64-v8a/` (**not** `assets/` — Android 10+
+   blocks executing, or even dlopen-mapping-as-executable, files copied
+   to an app's writable private storage at runtime, regardless of
+   `chmod`; only `jniLibs`, extracted by PackageManager at install time,
+   is exempt from this)
+4. `app/build.gradle.kts` sets `packaging.jniLibs.useLegacyPackaging = true`
+   — otherwise AGP keeps native libs uncompressed inside the APK instead
+   of extracting them to disk, and the binary can't be exec'd from there
+
+None of this needs to be repeated unless the bundled QEMU itself needs
+updating.
 
 ## Still to do
 
-1. ✅ ~~Get a QEMU binary~~ → verified via path A (`scripts/test-in-termux.sh`)
-2. ✅ ~~Kernel + rootfs~~ → Debian `genericcloud-arm64.qcow2` (downloaded by
-   the script) + UEFI firmware — no separate kernel extraction needed
-3. ✅ ~~First-boot password~~ → `scripts/make-seed.sh` builds a cloud-init
-   seed ISO and shows a random password
-4. ✅ ~~Start/stop control (v0.1)~~ → via Termux RUN_COMMAND
-5. ✅ ~~Path B binary~~ → `scripts/collect-native-deps.sh` collects
-   qemu-system-aarch64 + all its transitive `.so` deps. **Important
-   correction:** these must live in `app/src/main/jniLibs/arm64-v8a/`
-   (extracted by PackageManager at install time), NOT `assets/` copied to
-   `filesDir` at runtime — Android 10+ blocks executing (and even
-   dlopen-mapping-as-executable) files from an app's writable private
-   storage (W^X protection), regardless of `chmod`. `scripts/patch-for-jnilibs.sh`
-   renames the versioned `.so` files (e.g. `libfoo.so.1` → `libfoo.so`)
-   and uses `patchelf` to fix up SONAME/NEEDED references so they still
-   resolve. `NativeVmLauncher.kt` launches straight from
-   `applicationInfo.nativeLibraryDir` with `LD_LIBRARY_PATH` set there —
-   no termux-packages cross-compile needed, since the binary uses
-   `DT_RUNPATH` (checked after `LD_LIBRARY_PATH`). The UEFI firmware
-   (`edk2-aarch64-code.fd`) is plain data, never executed, so it's fine
-   to keep in `assets/qemu-libs/` and extract normally.
-6. **Get rootfs.qcow2 + seed.iso into the standalone path:** the
-   "Start VM (standalone, no Termux)" button expects these already in
-   `filesDir/vm/` — for now, push them manually with
-   `adb push debian-13-genericcloud-arm64.qcow2 seed.iso
-   /data/data/io.boffin.vmforge/files/vm/` (requires `run-as` or a
-   debug build); a proper in-app download/setup flow is still needed
-7. **Terminal UI:** add a terminal view to show the serial console output
-   inside the app (could reuse Termux's `TerminalView` library or code
-   from the [[ReTerminal]] project)
-8. **Verification:** an Android Studio (PC) build is the easiest way to
-   verify a first `gradlew assembleDebug` locally
+- **In-app VM setup:** the disk image + seed still need to be prepared
+  externally (Termux) and imported by hand; a fully in-app
+  download/provisioning flow would remove that step
+- **Real terminal emulator:** `TerminalActivity` is line-based and strips
+  ANSI codes rather than rendering them — full-screen console apps
+  inside the VM won't display correctly; swapping in Termux's
+  `TerminalView`/`TerminalEmulator` libraries would fix this
+- **KVM devices:** untested on a device that actually has `/dev/kvm`
+  access (e.g. Pixel with pKVM) — should be significantly faster there

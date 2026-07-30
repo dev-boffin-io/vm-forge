@@ -5,21 +5,28 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
 import java.io.File
 
 /**
- * Path B: runs the bundled, standalone QEMU (via NativeVmLauncher) as a
- * foreground service so Android doesn't kill the VM process in the
- * background. This is the fully self-contained alternative to v0.1's
- * Termux RUN_COMMAND approach — no Termux dependency at all.
+ * Runs the bundled, standalone QEMU (via NativeVmLauncher) as a foreground
+ * service so Android doesn't kill the VM process in the background.
+ * Also bindable — TerminalActivity binds to this to read/write the running
+ * QEMU process's stdio directly for an interactive console.
  */
 class VmService : Service() {
 
-    private var qemuProcess: Process? = null
-    private var logThread: Thread? = null
+    inner class LocalBinder : Binder() {
+        fun getService(): VmService = this@VmService
+    }
+    private val binder = LocalBinder()
+
+    var qemuProcess: Process? = null
+        private set
+
     private val channelId = "vm_forge_running"
 
     override fun onCreate() {
@@ -35,41 +42,30 @@ class VmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = Notification.Builder(this, channelId)
             .setContentTitle("vm-forge")
-            .setContentText("VM running in background (standalone)")
+            .setContentText("VM running in background")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .build()
         startForeground(1, notification)
 
-        try {
-            qemuProcess = NativeVmLauncher(this).start()
-            startLogging(qemuProcess!!)
-        } catch (e: Exception) {
-            Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
-            stopSelf()
+        if (qemuProcess == null || qemuProcess?.isAlive != true) {
+            try {
+                qemuProcess = NativeVmLauncher(this).start()
+            } catch (e: Exception) {
+                Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+                stopSelf()
+            }
         }
 
         return START_STICKY
     }
 
-    /** Continuously copies the QEMU process's combined stdout/stderr into vm/vm.log. */
-    private fun startLogging(process: Process) {
-        val logFile = File(File(filesDir, "vm"), "vm.log")
-        logThread = Thread {
-            try {
-                logFile.outputStream().use { out ->
-                    process.inputStream.copyTo(out)
-                }
-            } catch (_: Exception) {
-                // process ended / stream closed — nothing to do
-            }
-        }.apply { isDaemon = true; start() }
-    }
+    fun isRunning(): Boolean = qemuProcess?.isAlive == true
+
+    override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
         qemuProcess?.destroy()
-        logThread?.interrupt()
+        qemuProcess = null
         super.onDestroy()
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
 }

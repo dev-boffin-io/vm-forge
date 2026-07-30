@@ -4,11 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The SSH console only binds to 127.0.0.1, so no external network permission is needed -->
 
-    <!-- v0.1: RUN_COMMAND permission to run the VM inside Termux
-         (requires allow-external-apps=true in Termux, see README) -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
-
-    <!-- Required for VmService (path B, standalone) to run as a foreground service -->
+    <!-- Required for VmService (standalone QEMU) to run as a foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -31,7 +27,13 @@
             </intent-filter>
         </activity>
 
-        <!-- Keeps the QEMU process running in the foreground (path B, not yet used) -->
+        <activity
+            android:name=".TerminalActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Keeps the QEMU process running in the foreground -->
         <service
             android:name=".VmService"
             android:exported="false"

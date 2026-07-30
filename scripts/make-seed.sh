@@ -2,7 +2,7 @@
 # Usage: ./make-seed.sh
 # Builds a cloud-init NoCloud seed ISO with a randomly generated password.
 # Boot this ISO in QEMU with -cdrom and, on first boot, the Debian cloud
-# image will use this password (instead of a fixed root/kali like Kalidroid).
+# image will use this password (instead of a fixed default login).
 set -e
 
 VM_DIR="${1:-$HOME/vm-test}"

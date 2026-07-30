@@ -21,7 +21,7 @@
         android:id="@+id/startVmButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start VM (via Termux)" />
+        android:text="Start VM" />
 
     <Button
         android:id="@+id/stopVmButton"
@@ -31,18 +31,11 @@
         android:text="Stop VM" />
 
     <Button
-        android:id="@+id/startStandaloneButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Start VM (standalone, no Termux)" />
-
-    <Button
-        android:id="@+id/stopStandaloneButton"
+        android:id="@+id/openTerminalButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="Stop Standalone VM" />
+        android:text="Open Terminal" />
 
     <TextView
         android:layout_width="match_parent"
@@ -64,13 +57,6 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Import seed.iso" />
-
-    <Button
-        android:id="@+id/viewLogButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="View VM Log" />
 
 </LinearLayout>
 </ScrollView>
