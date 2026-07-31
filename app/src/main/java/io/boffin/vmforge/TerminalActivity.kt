@@ -75,6 +75,11 @@ class TerminalActivity : AppCompatActivity() {
                 sendCurrentInput(); true
             } else false
         }
+        inputField.setOnClickListener {
+            inputField.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(inputField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
 
         // Ensure the VM is running, then bind to the service to get its process streams
         startForegroundService(Intent(this, VmService::class.java))
