@@ -40,6 +40,9 @@ class TerminalActivity : AppCompatActivity() {
 
     // Strips ANSI escape/color codes (e.g. "\u001B[0;32m") for readability
     private val ansiRegex = Regex("\u001B\\[[0-9;?]*[a-zA-Z]")
+    private val ansiPartial = Regex("^\u001B\\[[0-9;?]*[a-zA-Z]")
+    // Holds a possibly-incomplete escape sequence split across two read() calls
+    private val pending = StringBuilder()
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -94,7 +97,35 @@ class TerminalActivity : AppCompatActivity() {
             while (keepReading) {
                 val n = try { stream.read(buffer) } catch (_: Exception) { break }
                 if (n <= 0) break
-                val chunk = ansiRegex.replace(String(buffer, 0, n, Charsets.UTF_8), "")
+                val text = pending.toString() + String(buffer, 0, n, Charsets.UTF_8)
+
+                val lastEsc = text.lastIndexOf('\u001B')
+                val safeText: String
+                if (lastEsc == -1) {
+                    safeText = text
+                    pending.clear()
+                } else {
+                    val tail = text.substring(lastEsc)
+                    val match = ansiPartial.find(tail)
+                    if (match != null && match.range.last == tail.length - 1) {
+                        // the tail is exactly one complete escape sequence — safe to include
+                        safeText = text
+                        pending.clear()
+                    } else {
+                        // incomplete (or something trailing after it) — hold back for next read,
+                        // unless it's grown suspiciously long (not a real ANSI code), then just flush it
+                        if (tail.length > 64) {
+                            safeText = text
+                            pending.clear()
+                        } else {
+                            safeText = text.substring(0, lastEsc)
+                            pending.clear()
+                            pending.append(tail)
+                        }
+                    }
+                }
+
+                val chunk = ansiRegex.replace(safeText, "")
                 runOnUiThread {
                     outputView.append(chunk)
                     scrollView.post { scrollView.fullScroll(android.view.View.FOCUS_DOWN) }
