@@ -22,6 +22,7 @@ class VmService : Service() {
         const val EXTRA_SSH_PORT = "ssh_port"
         const val EXTRA_VNC_PORT = "vnc_port"
         const val EXTRA_SPICE_PORT = "spice_port"
+        const val EXTRA_HEADLESS = "headless"
     }
 
     inner class LocalBinder : Binder() {
@@ -56,8 +57,9 @@ class VmService : Service() {
             val sshPort = intent?.getIntExtra(EXTRA_SSH_PORT, 2222) ?: 2222
             val vncPort = intent?.getIntExtra(EXTRA_VNC_PORT, -1)?.takeIf { it > 0 }
             val spicePort = intent?.getIntExtra(EXTRA_SPICE_PORT, -1)?.takeIf { it > 0 }
+            val headless = intent?.getBooleanExtra(EXTRA_HEADLESS, true) ?: true
             try {
-                qemuProcess = NativeVmLauncher(this, sshPort, vncPort, spicePort).start()
+                qemuProcess = NativeVmLauncher(this, sshPort, vncPort, spicePort, headless).start()
             } catch (e: Exception) {
                 Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
                 stopSelf()

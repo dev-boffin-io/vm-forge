@@ -25,12 +25,14 @@ import java.io.File
  * @param sshPort local port SSH is forwarded to (default 2222 if null/blank)
  * @param vncPort if set, exposes a VNC server on 127.0.0.1:vncPort; disabled by default
  * @param spicePort if set, exposes a SPICE server on 127.0.0.1:spicePort; disabled by default
+ * @param headless if true (default), passes -nographic (no local display, serial console only)
  */
 class NativeVmLauncher(
     private val context: Context,
     private val sshPort: Int = 2222,
     private val vncPort: Int? = null,
-    private val spicePort: Int? = null
+    private val spicePort: Int? = null,
+    private val headless: Boolean = true
 ) {
 
     private val nativeLibDir: File
@@ -66,9 +68,11 @@ class NativeVmLauncher(
             "-bios", uefiCode.absolutePath,
             "-drive", "file=${disk.absolutePath},if=virtio,format=qcow2",
             "-device", "virtio-net-device,netdev=net0",
-            "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:$sshPort-:22",
-            "-nographic"
+            "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:$sshPort-:22"
         )
+        if (headless) {
+            cmd.add("-nographic")
+        }
         if (seedIso.exists()) {
             cmd.add("-cdrom")
             cmd.add(seedIso.absolutePath)

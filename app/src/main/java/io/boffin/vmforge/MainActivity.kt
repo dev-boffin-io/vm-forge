@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         val sshPortInput = findViewById<android.widget.EditText>(R.id.sshPortInput)
         val vncPortInput = findViewById<android.widget.EditText>(R.id.vncPortInput)
         val spicePortInput = findViewById<android.widget.EditText>(R.id.spicePortInput)
+        val headlessCheckbox = findViewById<android.widget.CheckBox>(R.id.headlessCheckbox)
 
         startButton.setOnClickListener {
             val disk = File(File(filesDir, "vm"), "rootfs.qcow2")
@@ -64,11 +65,20 @@ class MainActivity : AppCompatActivity() {
             val sshPort = sshPortInput.text.toString().toIntOrNull() ?: 2222
             val vncPort = vncPortInput.text.toString().toIntOrNull()
             val spicePort = spicePortInput.text.toString().toIntOrNull()
+            val headless = headlessCheckbox.isChecked
+            if (!headless) {
+                Toast.makeText(
+                    this,
+                    "Headless off: the in-app Terminal won't show console output — connect via VNC/SPICE instead",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
 
             Toast.makeText(this, "Starting VM…", Toast.LENGTH_SHORT).show()
             try {
                 val intent = Intent(this, VmService::class.java).apply {
                     putExtra(VmService.EXTRA_SSH_PORT, sshPort)
+                    putExtra(VmService.EXTRA_HEADLESS, headless)
                     vncPort?.let { putExtra(VmService.EXTRA_VNC_PORT, it) }
                     spicePort?.let { putExtra(VmService.EXTRA_SPICE_PORT, it) }
                 }

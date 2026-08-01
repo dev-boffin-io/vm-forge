@@ -48,6 +48,14 @@
         android:hint="SPICE port (blank = disabled)"
         android:inputType="number" />
 
+    <CheckBox
+        android:id="@+id/headlessCheckbox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:checked="true"
+        android:text="Headless (-nographic, disable for VNC/SPICE display output)" />
+
     <Button
         android:id="@+id/startVmButton"
         android:layout_width="match_parent"
