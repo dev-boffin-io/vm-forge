@@ -4,8 +4,8 @@ import android.content.Context
 import java.io.File
 
 /**
- * Path B: launches QEMU directly from the app's nativeLibraryDir, where
- * Android's PackageManager already extracted it at install time (from
+ * Launches QEMU directly from the app's nativeLibraryDir, where Android's
+ * PackageManager already extracted it at install time (from
  * app/src/main/jniLibs/arm64-v8a/).
  *
  * IMPORTANT: this deliberately does NOT copy binaries out of assets/ into
@@ -21,8 +21,17 @@ import java.io.File
  * The UEFI firmware (edk2-aarch64-code.fd) is just data — never executed
  * or mapped exec — so it's fine to keep in assets/qemu-libs/ and extract
  * normally to filesDir.
+ *
+ * @param sshPort local port SSH is forwarded to (default 2222 if null/blank)
+ * @param vncPort if set, exposes a VNC server on 127.0.0.1:vncPort; disabled by default
+ * @param spicePort if set, exposes a SPICE server on 127.0.0.1:spicePort; disabled by default
  */
-class NativeVmLauncher(private val context: Context) {
+class NativeVmLauncher(
+    private val context: Context,
+    private val sshPort: Int = 2222,
+    private val vncPort: Int? = null,
+    private val spicePort: Int? = null
+) {
 
     private val nativeLibDir: File
         get() = File(context.applicationInfo.nativeLibraryDir)
@@ -57,7 +66,7 @@ class NativeVmLauncher(private val context: Context) {
             "-bios", uefiCode.absolutePath,
             "-drive", "file=${disk.absolutePath},if=virtio,format=qcow2",
             "-device", "virtio-net-device,netdev=net0",
-            "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22",
+            "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:$sshPort-:22",
             "-nographic"
         )
         if (seedIso.exists()) {
@@ -67,6 +76,23 @@ class NativeVmLauncher(private val context: Context) {
         if (accel.mode == KvmDetector.AccelMode.KVM) {
             cmd.add("-enable-kvm")
         }
+
+        // VNC: QEMU's -vnc takes a display NUMBER, not a raw port — the
+        // actual TCP port is always 5900+display. We accept a real port
+        // from the user and convert it here so they don't have to think
+        // about that offset.
+        vncPort?.let { port ->
+            val display = port - 5900
+            if (display >= 0) {
+                cmd.add("-vnc"); cmd.add("127.0.0.1:$display")
+            }
+        }
+
+        // SPICE takes a raw port directly, no offset needed.
+        spicePort?.let { port ->
+            cmd.add("-spice"); cmd.add("port=$port,addr=127.0.0.1,disable-ticketing=on")
+        }
+
         return cmd
     }
 

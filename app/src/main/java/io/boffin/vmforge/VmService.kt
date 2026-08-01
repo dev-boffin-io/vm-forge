@@ -9,7 +9,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
-import java.io.File
 
 /**
  * Runs the bundled, standalone QEMU (via NativeVmLauncher) as a foreground
@@ -18,6 +17,12 @@ import java.io.File
  * QEMU process's stdio directly for an interactive console.
  */
 class VmService : Service() {
+
+    companion object {
+        const val EXTRA_SSH_PORT = "ssh_port"
+        const val EXTRA_VNC_PORT = "vnc_port"
+        const val EXTRA_SPICE_PORT = "spice_port"
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): VmService = this@VmService
@@ -48,8 +53,11 @@ class VmService : Service() {
         startForeground(1, notification)
 
         if (qemuProcess == null || qemuProcess?.isAlive != true) {
+            val sshPort = intent?.getIntExtra(EXTRA_SSH_PORT, 2222) ?: 2222
+            val vncPort = intent?.getIntExtra(EXTRA_VNC_PORT, -1)?.takeIf { it > 0 }
+            val spicePort = intent?.getIntExtra(EXTRA_SPICE_PORT, -1)?.takeIf { it > 0 }
             try {
-                qemuProcess = NativeVmLauncher(this).start()
+                qemuProcess = NativeVmLauncher(this, sshPort, vncPort, spicePort).start()
             } catch (e: Exception) {
                 Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
                 stopSelf()

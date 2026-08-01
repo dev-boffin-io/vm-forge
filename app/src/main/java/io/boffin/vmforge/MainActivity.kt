@@ -46,6 +46,10 @@ class MainActivity : AppCompatActivity() {
         val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (fast)" else "🐢 TCG (software emulation, slow)"
         statusView.text = "$label\n${accel.reason}"
 
+        val sshPortInput = findViewById<android.widget.EditText>(R.id.sshPortInput)
+        val vncPortInput = findViewById<android.widget.EditText>(R.id.vncPortInput)
+        val spicePortInput = findViewById<android.widget.EditText>(R.id.spicePortInput)
+
         startButton.setOnClickListener {
             val disk = File(File(filesDir, "vm"), "rootfs.qcow2")
             if (!disk.exists()) {
@@ -56,9 +60,19 @@ class MainActivity : AppCompatActivity() {
                 ).show()
                 return@setOnClickListener
             }
+            // Blank field = native default (SSH 2222, VNC/SPICE disabled)
+            val sshPort = sshPortInput.text.toString().toIntOrNull() ?: 2222
+            val vncPort = vncPortInput.text.toString().toIntOrNull()
+            val spicePort = spicePortInput.text.toString().toIntOrNull()
+
             Toast.makeText(this, "Starting VM…", Toast.LENGTH_SHORT).show()
             try {
-                startForegroundService(Intent(this, VmService::class.java))
+                val intent = Intent(this, VmService::class.java).apply {
+                    putExtra(VmService.EXTRA_SSH_PORT, sshPort)
+                    vncPort?.let { putExtra(VmService.EXTRA_VNC_PORT, it) }
+                    spicePort?.let { putExtra(VmService.EXTRA_SPICE_PORT, it) }
+                }
+                startForegroundService(intent)
             } catch (e: Exception) {
                 Toast.makeText(this, "Failed to start: ${e.message}", Toast.LENGTH_LONG).show()
             }

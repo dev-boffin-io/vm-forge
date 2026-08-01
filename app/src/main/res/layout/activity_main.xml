@@ -17,10 +17,42 @@
         android:textSize="16sp"
         android:paddingBottom="24dp" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Ports (leave blank for defaults; VNC/SPICE off unless set):"
+        android:textSize="14sp" />
+
+    <EditText
+        android:id="@+id/sshPortInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="SSH port (default 2222)"
+        android:inputType="number" />
+
+    <EditText
+        android:id="@+id/vncPortInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="VNC port (blank = disabled)"
+        android:inputType="number" />
+
+    <EditText
+        android:id="@+id/spicePortInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="SPICE port (blank = disabled)"
+        android:inputType="number" />
+
     <Button
         android:id="@+id/startVmButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:text="Start VM" />
 
     <Button
