@@ -96,6 +96,16 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, TerminalActivity::class.java))
         }
 
+        findViewById<Button>(R.id.viewCommandButton).setOnClickListener {
+            val cmdFile = File(File(filesDir, "vm"), "last_command.txt")
+            val content = if (cmdFile.exists()) cmdFile.readText() else "(no VM started yet)"
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Last Launch Command")
+                .setMessage(content)
+                .setPositiveButton("Close", null)
+                .show()
+        }
+
         // No-adb file import: pick a file from shared storage (e.g. Downloads,
         // after moving it there via Termux/share-forge) and copy it into
         // filesDir/vm/ under the exact name QEMU expects.

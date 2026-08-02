@@ -84,12 +84,13 @@ class NativeVmLauncher(
         // VNC: QEMU's -vnc takes a display NUMBER, not a raw port — the
         // actual TCP port is always 5900+display. We accept a real port
         // from the user and convert it here so they don't have to think
-        // about that offset.
+        // about that offset. If the entered value is already small enough
+        // to look like a display number (<100), use it as-is instead of
+        // subtracting — avoids silently going negative and dropping VNC
+        // entirely when someone enters a display number by mistake.
         vncPort?.let { port ->
-            val display = port - 5900
-            if (display >= 0) {
-                cmd.add("-vnc"); cmd.add("127.0.0.1:$display")
-            }
+            val display = if (port < 100) port else port - 5900
+            cmd.add("-vnc"); cmd.add("127.0.0.1:$display")
         }
 
         // SPICE takes a raw port directly, no offset needed.

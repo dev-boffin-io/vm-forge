@@ -59,7 +59,10 @@ class VmService : Service() {
             val spicePort = intent?.getIntExtra(EXTRA_SPICE_PORT, -1)?.takeIf { it > 0 }
             val headless = intent?.getBooleanExtra(EXTRA_HEADLESS, true) ?: true
             try {
-                qemuProcess = NativeVmLauncher(this, sshPort, vncPort, spicePort, headless).start()
+                val launcher = NativeVmLauncher(this, sshPort, vncPort, spicePort, headless)
+                java.io.File(java.io.File(filesDir, "vm"), "last_command.txt")
+                    .writeText(launcher.buildCommand().joinToString(" "))
+                qemuProcess = launcher.start()
             } catch (e: Exception) {
                 Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
                 stopSelf()
