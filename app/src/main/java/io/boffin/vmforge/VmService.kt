@@ -23,6 +23,7 @@ class VmService : Service() {
         const val EXTRA_VNC_PORT = "vnc_port"
         const val EXTRA_SPICE_PORT = "spice_port"
         const val EXTRA_HEADLESS = "headless"
+        const val EXTRA_ARCH = "arch" // "arm64" or "x86_64"
     }
 
     inner class LocalBinder : Binder() {
@@ -58,8 +59,10 @@ class VmService : Service() {
             val vncPort = intent?.getIntExtra(EXTRA_VNC_PORT, -1)?.takeIf { it > 0 }
             val spicePort = intent?.getIntExtra(EXTRA_SPICE_PORT, -1)?.takeIf { it > 0 }
             val headless = intent?.getBooleanExtra(EXTRA_HEADLESS, true) ?: true
+            val arch = if (intent?.getStringExtra(EXTRA_ARCH) == "x86_64")
+                KvmDetector.GuestArch.X86_64 else KvmDetector.GuestArch.ARM64
             try {
-                val launcher = NativeVmLauncher(this, sshPort, vncPort, spicePort, headless)
+                val launcher = NativeVmLauncher(this, arch, sshPort, vncPort, spicePort, headless)
                 java.io.File(java.io.File(filesDir, "vm"), "last_command.txt")
                     .writeText(launcher.buildCommand().joinToString(" "))
                 qemuProcess = launcher.start()

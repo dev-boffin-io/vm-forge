@@ -35,16 +35,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val accel = KvmDetector.detect()
-        val statusView = findViewById<TextView>(R.id.accelStatus)
+        val accelStatusView = findViewById<TextView>(R.id.accelStatus)
         val startButton = findViewById<Button>(R.id.startVmButton)
         val stopButton = findViewById<Button>(R.id.stopVmButton)
         val openTerminalButton = findViewById<Button>(R.id.openTerminalButton)
         val importDiskButton = findViewById<Button>(R.id.importDiskButton)
         val importSeedButton = findViewById<Button>(R.id.importSeedButton)
+        val archRadioGroup = findViewById<android.widget.RadioGroup>(R.id.archRadioGroup)
 
-        val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (fast)" else "🐢 TCG (software emulation, slow)"
-        statusView.text = "$label\n${accel.reason}"
+        fun selectedArch(): KvmDetector.GuestArch =
+            if (archRadioGroup.checkedRadioButtonId == R.id.archX86_64)
+                KvmDetector.GuestArch.X86_64 else KvmDetector.GuestArch.ARM64
+
+        fun refreshAccelStatus() {
+            val accel = KvmDetector.detect(selectedArch())
+            val label = if (accel.mode == KvmDetector.AccelMode.KVM) "⚡ KVM (fast)" else "🐢 TCG (software emulation, slow)"
+            accelStatusView.text = "$label\n${accel.reason}"
+        }
+        refreshAccelStatus()
+        archRadioGroup.setOnCheckedChangeListener { _, _ -> refreshAccelStatus() }
 
         val sshPortInput = findViewById<android.widget.EditText>(R.id.sshPortInput)
         val vncPortInput = findViewById<android.widget.EditText>(R.id.vncPortInput)
@@ -66,6 +75,7 @@ class MainActivity : AppCompatActivity() {
             val vncPort = vncPortInput.text.toString().toIntOrNull()
             val spicePort = spicePortInput.text.toString().toIntOrNull()
             val headless = headlessCheckbox.isChecked
+            val arch = selectedArch()
             if (!headless) {
                 Toast.makeText(
                     this,
@@ -74,11 +84,12 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
 
-            Toast.makeText(this, "Starting VM…", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Starting ${arch.label} VM…", Toast.LENGTH_SHORT).show()
             try {
                 val intent = Intent(this, VmService::class.java).apply {
                     putExtra(VmService.EXTRA_SSH_PORT, sshPort)
                     putExtra(VmService.EXTRA_HEADLESS, headless)
+                    putExtra(VmService.EXTRA_ARCH, if (arch == KvmDetector.GuestArch.X86_64) "x86_64" else "arm64")
                     vncPort?.let { putExtra(VmService.EXTRA_VNC_PORT, it) }
                     spicePort?.let { putExtra(VmService.EXTRA_SPICE_PORT, it) }
                 }

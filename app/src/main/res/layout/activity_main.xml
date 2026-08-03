@@ -15,7 +15,36 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="16sp"
-        android:paddingBottom="24dp" />
+        android:paddingBottom="8dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Guest architecture:"
+        android:textSize="14sp" />
+
+    <RadioGroup
+        android:id="@+id/archRadioGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="16dp">
+
+        <RadioButton
+            android:id="@+id/archArm64"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:checked="true"
+            android:text="ARM64" />
+
+        <RadioButton
+            android:id="@+id/archX86_64"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="x86_64 (AMD64)" />
+    </RadioGroup>
 
     <TextView
         android:layout_width="match_parent"
@@ -88,7 +117,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="Import VM disk files (no adb needed):"
+        android:text="Import VM disk files (no adb needed; overwrites whichever image is currently loaded — import the file matching the arch selected above):"
         android:textSize="14sp" />
 
     <Button

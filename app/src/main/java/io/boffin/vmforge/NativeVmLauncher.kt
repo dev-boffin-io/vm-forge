@@ -18,10 +18,13 @@ import java.io.File
  * renamed (to plain "libX.so" names, with patchelf fixing up SONAME/NEEDED
  * references) to fit Android's jniLibs packaging convention.
  *
- * The UEFI firmware (edk2-aarch64-code.fd) is just data — never executed
+ * The UEFI firmware (edk2-*-code.fd) is just data — never executed
  * or mapped exec — so it's fine to keep in assets/qemu-libs/ and extract
  * normally to filesDir.
  *
+ * @param guestArch which QEMU binary/machine type/firmware to use — ARM64
+ *   or X86_64 (AMD64). X86_64 always runs in TCG on this ARM64 device, see
+ *   KvmDetector.
  * @param sshPort local port SSH is forwarded to (default 2222 if null/blank)
  * @param vncPort if set, exposes a VNC server on 127.0.0.1:vncPort; disabled by default
  * @param spicePort if set, exposes a SPICE server on 127.0.0.1:spicePort; disabled by default
@@ -29,6 +32,7 @@ import java.io.File
  */
 class NativeVmLauncher(
     private val context: Context,
+    private val guestArch: KvmDetector.GuestArch = KvmDetector.GuestArch.ARM64,
     private val sshPort: Int = 2222,
     private val vncPort: Int? = null,
     private val spicePort: Int? = null,
@@ -41,11 +45,20 @@ class NativeVmLauncher(
     private val vmDir: File
         get() = File(context.filesDir, "vm").apply { mkdirs() }
 
+    private val archSuffix: String
+        get() = if (guestArch == KvmDetector.GuestArch.X86_64) "x86_64" else "aarch64"
+
+    private val machineType: String
+        get() = if (guestArch == KvmDetector.GuestArch.X86_64) "q35" else "virt"
+
+    private val firmwareAssetName: String
+        get() = if (guestArch == KvmDetector.GuestArch.X86_64) "edk2-x86_64-code.fd" else "edk2-aarch64-code.fd"
+
     /** Copies the UEFI firmware (plain data, not executed) from assets on first run. */
     private fun ensureFirmwareExtracted(): File {
-        val dest = File(vmDir, "edk2-aarch64-code.fd")
+        val dest = File(vmDir, firmwareAssetName)
         if (!dest.exists()) {
-            context.assets.open("qemu-libs/edk2-aarch64-code.fd").use { input ->
+            context.assets.open("qemu-libs/$firmwareAssetName").use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
         }
@@ -53,15 +66,18 @@ class NativeVmLauncher(
     }
 
     fun buildCommand(): List<String> {
-        val accel = KvmDetector.detect()
-        val qemuBinary = File(nativeLibDir, "libqemu_system_aarch64.so")
+        val accel = KvmDetector.detect(guestArch)
+        val qemuBinary = File(nativeLibDir, "libqemu_system_$archSuffix.so")
         val uefiCode = ensureFirmwareExtracted()
+        // Single VM slot for now — whichever architecture is selected uses
+        // the same rootfs.qcow2/seed.iso names (import the matching image
+        // for whichever arch you're about to start).
         val disk = File(vmDir, "rootfs.qcow2")
         val seedIso = File(vmDir, "seed.iso")
 
         val cmd = mutableListOf(
             qemuBinary.absolutePath,
-            "-M", "virt",
+            "-M", machineType,
             "-cpu", "max",
             "-smp", "2",
             "-m", "2048",

@@ -26,7 +26,7 @@ fi
 CMD=(qemu-system-aarch64 -M virt -cpu max -smp 2 -m 2048
      -bios "$FIRMWARE"
      -drive "file=$DISK,if=virtio,format=qcow2"
-     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22,hostfwd=tcp:127.0.0.1:5001-:5001,hostfwd=tcp:127.0.0.1:5901-:5901"
+     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22"
      -device virtio-net-device,netdev=net0
      -nographic)
 

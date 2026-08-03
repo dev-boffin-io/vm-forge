@@ -4,22 +4,33 @@ import java.io.File
 
 /**
  * Detects whether hardware virtualization (/dev/kvm) is accessible on this
- * device. Most non-Pixel devices (MediaTek/Xiaomi, etc.) don't have it —
- * in that case QEMU falls back to software emulation (TCG), which is
- * noticeably slower.
+ * device, and whether it would even apply to the selected guest
+ * architecture. KVM only accelerates SAME-architecture virtualization —
+ * on an ARM64 host, an x86_64 (AMD64) guest can NEVER use KVM regardless
+ * of /dev/kvm access; it always runs in software emulation (TCG).
  *
  * This is surfaced to the user clearly, not hidden.
  */
 object KvmDetector {
 
     enum class AccelMode { KVM, TCG }
+    enum class GuestArch(val label: String) { ARM64("ARM64"), X86_64("x86_64 (AMD64)") }
 
     data class AccelResult(
         val mode: AccelMode,
         val reason: String
     )
 
-    fun detect(): AccelResult {
+    fun detect(guestArch: GuestArch = GuestArch.ARM64): AccelResult {
+        if (guestArch == GuestArch.X86_64) {
+            return AccelResult(
+                mode = AccelMode.TCG,
+                reason = "x86_64 (AMD64) guest on an ARM64 device — KVM can never accelerate " +
+                    "cross-architecture virtualization, only same-architecture. This will always " +
+                    "run in full software emulation, significantly slower than ARM64 guests."
+            )
+        }
+
         val kvmNode = File("/dev/kvm")
 
         if (!kvmNode.exists()) {

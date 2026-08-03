@@ -82,8 +82,49 @@ into another app. The process used to get a working standalone build:
 None of this needs to be repeated unless the bundled QEMU itself needs
 updating.
 
+## Adding another guest architecture (e.g. x86_64/AMD64)
+
+The app supports selecting ARM64 or x86_64 (AMD64) as the guest
+architecture from the UI. **x86_64 always runs in full software
+emulation (TCG) on this ARM64 device** — KVM only accelerates
+same-architecture virtualization, never cross-architecture, regardless
+of `/dev/kvm` access. Expect it to be significantly slower than ARM64
+guests.
+
+To add the x86_64 binary (this only needs to be done once):
+
+1. `pkg install qemu-system-x86_64-headless` in Termux
+2. `scripts/collect-native-deps.sh qemu-system-x86_64` — merges into the
+   same `~/vm-forge-native` folder used for ARM64 (most `.so`
+   dependencies are shared between the two, since both are ARM64 host
+   binaries that just emulate different guest architectures)
+3. `scripts/patch-for-jnilibs.sh` — now renames *every* `qemu-system-*`
+   binary it finds (not just aarch64) to the `libqemu_system_<arch>.so`
+   convention
+4. Copy the result into `app/src/main/jniLibs/arm64-v8a/` as before —
+   you should end up with both `libqemu_system_aarch64.so` and
+   `libqemu_system_x86_64.so` side by side, sharing the same dependency
+   `.so` files
+5. Also copy `edk2-x86_64-code.fd` (from `$PREFIX/share/qemu/`) into
+   `app/src/main/assets/qemu-libs/`, alongside the existing
+   `edk2-aarch64-code.fd`
+6. Get an x86_64 Debian cloud image (same idea as
+   `debian-13-genericcloud-arm64.qcow2` but the `-amd64.qcow2` variant
+   from the same `cloud.debian.org` path) and import it the same way
+
+**Untested / worth verifying:** the x86_64 machine type (`q35`) is
+launched with only the `CODE` firmware file via `-bios`, mirroring the
+ARM64 `virt` machine's setup — but x86 OVMF conventionally wants a
+separate writable `VARS` file too (`edk2-x86_64-vars.fd`) for NVRAM
+persistence across boots. It may work fine read-only for a single
+session; if UEFI boot menu settings don't persist or boot fails,
+splitting into `-drive if=pflash,file=...code.fd,readonly=on` +
+`-drive if=pflash,file=...vars.fd` (copied to a writable location first)
+is the standard fix.
+
 ## Still to do
 
+- **x86_64 UEFI vars persistence:** see above — not yet verified
 - **In-app VM setup:** the disk image + seed still need to be prepared
   externally (Termux) and imported by hand; a fully in-app
   download/provisioning flow would remove that step
@@ -93,3 +134,4 @@ updating.
   `TerminalView`/`TerminalEmulator` libraries would fix this
 - **KVM devices:** untested on a device that actually has `/dev/kvm`
   access (e.g. Pixel with pKVM) — should be significantly faster there
+  for ARM64 guests (never applies to x86_64 guests, see above)
