@@ -88,6 +88,13 @@ class NativeVmLauncher(
         )
         if (headless) {
             cmd.add("-nographic")
+        } else {
+            // Without -nographic, the guest needs an actual GPU device to render
+            // into — otherwise GRUB/the kernel has no framebuffer and VNC/SPICE
+            // just show a blank/stuck screen even though the server is running.
+            // virtio-gpu-pci is the standard modern choice (works on both ARM64
+            // "virt" and x86_64 "q35" machine types).
+            cmd.add("-device"); cmd.add("virtio-gpu-pci")
         }
         if (seedIso.exists()) {
             cmd.add("-cdrom")
