@@ -16,6 +16,7 @@ class MainActivity : AppCompatActivity() {
         private const val NOTIFICATION_PERMISSION_REQUEST = 102
         private const val PICK_DISK_REQUEST = 201
         private const val PICK_SEED_REQUEST = 202
+        private const val PICK_ROOTFS_REQUEST = 203
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,7 +105,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         openTerminalButton.setOnClickListener {
-            startActivity(Intent(this, TerminalActivity::class.java))
+            startActivity(Intent(this, TerminalActivity::class.java).apply {
+                putExtra(TerminalActivity.EXTRA_TARGET, TerminalActivity.TARGET_VM)
+            })
         }
 
         findViewById<Button>(R.id.viewCommandButton).setOnClickListener {
@@ -134,6 +137,32 @@ class MainActivity : AppCompatActivity() {
             }
             startActivityForResult(intent, PICK_SEED_REQUEST)
         }
+
+        // --- PRoot Container (separate mode from the QEMU VM above) ---
+        findViewById<Button>(R.id.importRootfsButton).setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
+            startActivityForResult(intent, PICK_ROOTFS_REQUEST)
+        }
+        findViewById<Button>(R.id.startProotButton).setOnClickListener {
+            if (!PRootLauncher(this).rootfsExists()) {
+                Toast.makeText(this, "No rootfs imported yet — use \"Import PRoot rootfs\" first", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            Toast.makeText(this, "Starting PRoot container…", Toast.LENGTH_SHORT).show()
+            startForegroundService(Intent(this, ProotService::class.java))
+        }
+        findViewById<Button>(R.id.stopProotButton).setOnClickListener {
+            stopService(Intent(this, ProotService::class.java))
+            Toast.makeText(this, "Stop requested", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.openProotTerminalButton).setOnClickListener {
+            startActivity(Intent(this, TerminalActivity::class.java).apply {
+                putExtra(TerminalActivity.EXTRA_TARGET, TerminalActivity.TARGET_PROOT)
+            })
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -145,6 +174,15 @@ class MainActivity : AppCompatActivity() {
         val destName = when (requestCode) {
             PICK_DISK_REQUEST -> "rootfs.qcow2"
             PICK_SEED_REQUEST -> "seed.iso"
+            PICK_ROOTFS_REQUEST -> {
+                Toast.makeText(this, "Extracting rootfs… this can take a while for a full distro", Toast.LENGTH_LONG).show()
+                RootfsImporter.extract(this, uri) { success, message ->
+                    runOnUiThread {
+                        Toast.makeText(this, if (success) "Rootfs ready: $message" else "Extract failed: $message", Toast.LENGTH_LONG).show()
+                    }
+                }
+                return
+            }
             else -> return
         }
 

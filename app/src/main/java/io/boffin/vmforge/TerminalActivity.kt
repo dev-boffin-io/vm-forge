@@ -1,6 +1,5 @@
 package io.boffin.vmforge
 
-import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,8 +15,11 @@ import androidx.appcompat.app.AppCompatActivity
 import java.io.OutputStream
 
 /**
- * A minimal interactive console for the running QEMU VM's serial output
- * (started with -nographic, so its stdio IS the guest's console).
+ * A minimal interactive console — works for either mode:
+ *  - the running QEMU VM's serial output (started with -nographic, so
+ *    its stdio IS the guest's console), or
+ *  - the running PRoot container's shell stdio
+ * Pass EXTRA_TARGET = TARGET_VM (default) or TARGET_PROOT to pick which.
  *
  * This is NOT a full VT100/ANSI terminal emulator — no cursor positioning,
  * no colors, no screen redraw handling. ANSI escape sequences are stripped
@@ -29,7 +31,15 @@ import java.io.OutputStream
  */
 class TerminalActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_TARGET = "target"
+        const val TARGET_VM = "vm"
+        const val TARGET_PROOT = "proot"
+    }
+
+    private var target = TARGET_VM
     private var vmService: VmService? = null
+    private var prootService: ProotService? = null
     private var bound = false
     private var readerThread: Thread? = null
     @Volatile private var keepReading = true
@@ -44,10 +54,16 @@ class TerminalActivity : AppCompatActivity() {
     // Holds a possibly-incomplete escape sequence split across two read() calls
     private val pending = StringBuilder()
 
+    private fun currentProcess(): Process? =
+        if (target == TARGET_PROOT) prootService?.prootProcess else vmService?.qemuProcess
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as VmService.LocalBinder
-            vmService = binder.getService()
+            if (target == TARGET_PROOT) {
+                prootService = (service as ProotService.LocalBinder).getService()
+            } else {
+                vmService = (service as VmService.LocalBinder).getService()
+            }
             bound = true
             startReadingOutput()
         }
@@ -55,12 +71,15 @@ class TerminalActivity : AppCompatActivity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             bound = false
             vmService = null
+            prootService = null
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_terminal)
+
+        target = intent.getStringExtra(EXTRA_TARGET) ?: TARGET_VM
 
         outputView = findViewById(R.id.terminalOutput)
         scrollView = findViewById(R.id.terminalScroll)
@@ -84,15 +103,16 @@ class TerminalActivity : AppCompatActivity() {
             imm.showSoftInput(inputField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
 
-        // Ensure the VM is running, then bind to the service to get its process streams
-        startForegroundService(Intent(this, VmService::class.java))
-        bindService(Intent(this, VmService::class.java), connection, Context.BIND_AUTO_CREATE)
+        // Ensure the target is running, then bind to its service to get its process streams
+        val serviceClass = if (target == TARGET_PROOT) ProotService::class.java else VmService::class.java
+        startForegroundService(Intent(this, serviceClass))
+        bindService(Intent(this, serviceClass), connection, Context.BIND_AUTO_CREATE)
     }
 
     private fun startReadingOutput() {
         keepReading = true
         readerThread = Thread {
-            val stream = vmService?.qemuProcess?.inputStream ?: return@Thread
+            val stream = currentProcess()?.inputStream ?: return@Thread
             val buffer = ByteArray(4096)
             while (keepReading) {
                 val n = try { stream.read(buffer) } catch (_: Exception) { break }
@@ -135,7 +155,7 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private fun sendLine(text: String) {
-        val out: OutputStream = vmService?.qemuProcess?.outputStream ?: return
+        val out: OutputStream = currentProcess()?.outputStream ?: return
         try {
             out.write((text + "\n").toByteArray(Charsets.UTF_8))
             out.flush()

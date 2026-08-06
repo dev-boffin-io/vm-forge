@@ -134,5 +134,47 @@
         android:layout_marginTop="8dp"
         android:text="Import seed.iso" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="24dp"
+        android:background="#33000000" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="PRoot Container (lightweight, shares this device's kernel — ARM64 only, no boot/kernel/GUI, just a shell in a rootfs)"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/importRootfsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Import PRoot rootfs (.tar.gz)" />
+
+    <Button
+        android:id="@+id/startProotButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Start PRoot Container" />
+
+    <Button
+        android:id="@+id/stopProotButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Stop PRoot Container" />
+
+    <Button
+        android:id="@+id/openProotTerminalButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Open PRoot Terminal" />
+
 </LinearLayout>
 </ScrollView>

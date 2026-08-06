@@ -122,7 +122,55 @@ splitting into `-drive if=pflash,file=...code.fd,readonly=on` +
 `-drive if=pflash,file=...vars.fd` (copied to a writable location first)
 is the standard fix.
 
+## PRoot Container (separate mode, no VM at all)
+
+Alongside the QEMU VM path, the app has a second, independent mode:
+**PRoot Container**. Instead of emulating a machine, PRoot chroots
+(without root) into a plain Linux rootfs directory that shares this
+device's own kernel — much lighter and faster than a QEMU VM, but with
+tradeoffs:
+
+- **ARM64-only** — same-architecture; no x86_64 option here (that would
+  need QEMU user-mode emulation layered inside PRoot, not set up)
+- **No boot, no kernel, no GUI** — PRoot just execs `/bin/sh` directly
+  inside the rootfs; there's no init/systemd, no display, just a shell
+- **Less isolated** — the host's `/dev`, `/proc`, `/sys` are bind-mounted
+  into the rootfs
+
+Good for quickly running ARM64 Linux command-line tools without the
+overhead of a full VM; not a substitute for the VM path if you need a
+real boot sequence, a desktop GUI, or x86_64 software.
+
+### Setup
+
+1. Collect the `proot` binary the same way QEMU was collected (the
+   scripts already work with any binary name):
+   ```
+   pkg install proot
+   ./scripts/collect-native-deps.sh proot
+   ./scripts/patch-for-jnilibs.sh
+   ```
+   copy the result into `jniLibs/arm64-v8a/` as before — you'll get
+   `libproot.so` alongside the QEMU binaries (dependencies are mostly
+   shared)
+2. Get a rootfs tarball — e.g. install `proot-distro` in Termux
+   (`pkg install proot-distro`) and use it to fetch one
+   (`proot-distro download debian` or similar produces a `.tar.gz`
+   rootfs you can point the app at), or build one with `debootstrap`
+3. In the app, tap **"Import PRoot rootfs (.tar.gz)"** and pick the
+   tarball from Downloads (same no-adb approach as the VM disk import —
+   extraction happens in-app, no `tar` binary needed)
+4. **"Start PRoot Container"**, then **"Open PRoot Terminal"**
+
+**Untested / worth verifying:** this hasn't been run end-to-end yet —
+worth checking that `-b /dev -b /proc -b /sys` is sufficient for typical
+package-manager operations inside the rootfs, and that a real
+proot-distro-produced tarball extracts cleanly (symlink handling in
+particular is best-effort in `RootfsImporter.kt`).
+
 ## Still to do
+
+- **PRoot Container:** see above — not yet verified end-to-end
 
 - **x86_64 UEFI vars persistence:** see above — not yet verified
 - **In-app VM setup:** the disk image + seed still need to be prepared

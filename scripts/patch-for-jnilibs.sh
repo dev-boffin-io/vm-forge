@@ -2,9 +2,11 @@
 # Renames versioned .so files (e.g. libfoo.so.1) to plain "libfoo.so" names
 # so Android's jniLibs packaging picks them up, and patches SONAME + all
 # NEEDED references (with patchelf) so they still resolve correctly.
-# Also renames any qemu-system-* binaries found (e.g. qemu-system-aarch64,
-# qemu-system-x86_64) to the "libqemu_system_<arch>.so" convention jniLibs
-# needs. Run this on the folder produced by collect-native-deps.sh.
+# Also renames any executable binary found (qemu-system-aarch64,
+# qemu-system-x86_64, proot, ...) to the "lib<name>.so" convention jniLibs
+# needs — qemu-system-* becomes libqemu_system_<arch>.so specifically,
+# everything else becomes lib<name>.so. Run this on the folder produced by
+# collect-native-deps.sh.
 set -e
 
 pkg install -y patchelf
@@ -16,26 +18,30 @@ mkdir -p "$OUT_DIR"
 cd "$SRC_DIR"
 
 declare -A rename_map
-qemu_binaries=()
+binaries=()
 
 # Step 1: figure out the new name for every file that doesn't already end in .so
 for f in *; do
     [ -f "$f" ] || continue
-    if [[ "$f" == qemu-system-* ]]; then
-        qemu_binaries+=("$f")
-        continue
-    fi
     if [[ "$f" == edk2-*-code.fd ]]; then
         continue  # firmware — stays in assets/qemu-libs/, not jniLibs
     fi
     if [[ "$f" == *.so ]]; then
         new_name="$f"
-    else
+        rename_map["$f"]="$new_name"
+        continue
+    fi
+    if [[ "$f" == *.so.* ]]; then
         # strip everything after the first ".so" occurrence, keep ".so"
         new_name=$(echo "$f" | sed -E 's/(\.so)\..*/\1/')
-        [[ "$new_name" != *.so ]] && continue
+        rename_map["$f"]="$new_name"
+        continue
     fi
-    rename_map["$f"]="$new_name"
+    # No .so anywhere in the name — treat as an executable binary
+    # (qemu-system-aarch64, qemu-system-x86_64, proot, ...) if it's +x
+    if [ -x "$f" ]; then
+        binaries+=("$f")
+    fi
 done
 
 # Step 2: copy libs under their new names
@@ -44,11 +50,16 @@ for old_name in "${!rename_map[@]}"; do
     cp "$old_name" "$OUT_DIR/$new_name"
 done
 
-# Step 2b: copy each qemu-system-* binary under the "lib...so" convention jniLibs needs
-for bin in "${qemu_binaries[@]}"; do
-    arch="${bin#qemu-system-}"
-    cp "$bin" "$OUT_DIR/libqemu_system_${arch}.so"
-    echo "  $bin -> libqemu_system_${arch}.so"
+# Step 2b: copy each executable binary under the "lib...so" convention jniLibs needs
+for bin in "${binaries[@]}"; do
+    if [[ "$bin" == qemu-system-* ]]; then
+        arch="${bin#qemu-system-}"
+        new_name="libqemu_system_${arch}.so"
+    else
+        new_name="lib${bin}.so"
+    fi
+    cp "$bin" "$OUT_DIR/$new_name"
+    echo "  $bin -> $new_name"
 done
 
 # Step 3: patch SONAME on renamed libs (only where it differs from new name)
@@ -58,7 +69,7 @@ for old_name in "${!rename_map[@]}"; do
     patchelf --set-soname "$new_name" "$target" 2>/dev/null || true
 done
 
-# Step 4: patch NEEDED references in every file (libs AND qemu binaries) to
+# Step 4: patch NEEDED references in every file (libs AND binaries) to
 # point at the new names
 for f in "$OUT_DIR"/*.so; do
     for old_name in "${!rename_map[@]}"; do
