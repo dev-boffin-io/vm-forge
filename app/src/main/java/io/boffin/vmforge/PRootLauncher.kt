@@ -23,6 +23,9 @@ class PRootLauncher(private val context: Context) {
     private val rootfsDir: File
         get() = File(context.filesDir, "proot-rootfs")
 
+    private val tmpDir: File
+        get() = File(context.filesDir, "proot-tmp").apply { mkdirs() }
+
     fun rootfsExists(): Boolean = rootfsDir.exists() && (rootfsDir.listFiles()?.isNotEmpty() == true)
 
     fun buildCommand(): List<String> {
@@ -44,7 +47,15 @@ class PRootLauncher(private val context: Context) {
         val cmd = buildCommand()
         return ProcessBuilder(cmd)
             .redirectErrorStream(true)
-            .apply { environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath }
+            .apply {
+                environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath
+                // PRoot was compiled with Termux's own tmp path baked in as a
+                // default (/data/data/com.termux/files/usr/tmp/), which our app
+                // can't access (different UID, private dir) — point it at our
+                // own writable directory instead.
+                environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                environment()["TMPDIR"] = tmpDir.absolutePath
+            }
             .start()
     }
 }
