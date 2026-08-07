@@ -10,8 +10,8 @@ import java.io.File
  * filesDir/proot-rootfs/.
  *
  * This shells out to a bundled `busybox tar` (jniLibs/arm64-v8a/
- * libbusybox.so, dynamically linked — see LD_LIBRARY_PATH below)
- * instead of parsing the tar format by hand. A real tar
+ * libbusybox.so) wrapped in `proot -0` (jniLibs/arm64-v8a/
+ * libproot.so) instead of parsing the tar format by hand. A real tar
  * implementation handles symlinks (including usrmerge layouts where /bin
  * is a symlink to usr/bin, created before usr/bin itself exists in
  * archive order) and permission bits correctly — the previous hand-rolled
@@ -27,6 +27,7 @@ object RootfsImporter {
                 mkdirs()
             }
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
+            val proot = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
 
             if (!busybox.exists() || !busybox.canExecute()) {
                 onDone(
@@ -36,31 +37,32 @@ object RootfsImporter {
                 )
                 return@Thread
             }
+            if (!proot.exists() || !proot.canExecute()) {
+                onDone(false, "Bundled proot not found at ${proot.absolutePath}")
+                return@Thread
+            }
 
             try {
-                // "busybox tar -xzf - -C destDir" reads the archive from stdin,
-                // which we feed from the picked content:// Uri, and extracts
-                // with full symlink/permission fidelity into destDir.
+                // Run tar under proot's fakeroot mode (-0): device nodes
+                // (dev/null, dev/console, ...) need mknod(), and Android's
+                // seccomp filter kills the process outright for that syscall
+                // (SIGSYS, exit 159) rather than returning an error — busybox's
+                // own --exclude flag isn't even compiled into this build to
+                // dodge it. Under proot, mknod is intercepted via ptrace and
+                // faked entirely in userspace before it ever reaches the
+                // kernel, so the real (blocked) syscall never happens — the
+                // same trick proot-distro/termux use to bootstrap rootfs
+                // tarballs as a non-root app.
+                val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }
                 val process = ProcessBuilder(
-                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath,
-                    // Device nodes (dev/null, dev/console, ...) require mknod(),
-                    // which Android's seccomp filter kills the process for
-                    // (SIGSYS, exit 159) rather than returning an error. Skip
-                    // them entirely — PRootLauncher bind-mounts the host's real
-                    // /dev over the rootfs at launch time (-b /dev), so the
-                    // archived ones are neither usable nor needed.
-                    // NOTE: busybox's getopt only accepts "--exclude PATTERN"
-                    // (space-separated) — the GNU-tar "--exclude=PATTERN" form
-                    // is silently not applied.
-                    "--exclude", "dev/*", "--exclude", "./dev/*",
-                    "--exclude", "dev/pts/*", "--exclude", "dev/shm/*"
+                    proot.absolutePath, "-0",
+                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath
                 )
                     .redirectErrorStream(true)
                     .apply {
-                        // libbusybox.so is dynamically linked (NDK-built, not static)
-                        // and depends on libandroid-selinux.so bundled alongside it —
-                        // without this it fails to even start.
                         environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
+                        environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                        environment()["TMPDIR"] = tmpDir.absolutePath
                     }
                     .start()
 
