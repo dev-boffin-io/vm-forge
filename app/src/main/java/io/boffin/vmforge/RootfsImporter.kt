@@ -49,7 +49,11 @@ object RootfsImporter {
                     // them entirely — PRootLauncher bind-mounts the host's real
                     // /dev over the rootfs at launch time (-b /dev), so the
                     // archived ones are neither usable nor needed.
-                    "--exclude=dev/*", "--exclude=./dev/*"
+                    // NOTE: busybox's getopt only accepts "--exclude PATTERN"
+                    // (space-separated) — the GNU-tar "--exclude=PATTERN" form
+                    // is silently not applied.
+                    "--exclude", "dev/*", "--exclude", "./dev/*",
+                    "--exclude", "dev/pts/*", "--exclude", "dev/shm/*"
                 )
                     .redirectErrorStream(true)
                     .apply {
