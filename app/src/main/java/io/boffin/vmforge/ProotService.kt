@@ -54,6 +54,11 @@ class ProotService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            if (!launcher.rootfsHasShell()) {
+                Toast.makeText(this, "Rootfs looks broken/incomplete (no /bin/sh) — re-import it", Toast.LENGTH_LONG).show()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             try {
                 prootProcess = launcher.start()
             } catch (e: Exception) {

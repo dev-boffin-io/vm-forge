@@ -28,6 +28,25 @@ class PRootLauncher(private val context: Context) {
 
     fun rootfsExists(): Boolean = rootfsDir.exists() && (rootfsDir.listFiles()?.isNotEmpty() == true)
 
+    /**
+     * Beyond "is the folder non-empty" (rootfsExists), confirms a shell
+     * binary is actually reachable — catches the half-extracted-rootfs case
+     * that used to surface only as proot's native "execve(...) No such file"
+     * error deep in the log.
+     */
+    fun rootfsHasShell(): Boolean {
+        fun resolves(path: String, depth: Int = 0): Boolean {
+            if (depth > 10) return false
+            val f = File(rootfsDir, path.removePrefix("/"))
+            if (!java.nio.file.Files.isSymbolicLink(f.toPath())) return f.isFile && f.length() > 0
+            val link = java.nio.file.Files.readSymbolicLink(f.toPath()).toString()
+            val next = if (link.startsWith("/")) link
+                       else File(f.parentFile, link).path.removePrefix(rootfsDir.path).removePrefix("/")
+            return resolves(next, depth + 1)
+        }
+        return resolves("bin/sh") || resolves("usr/bin/sh")
+    }
+
     fun buildCommand(): List<String> {
         val prootBinary = File(nativeLibDir, "libproot.so")
         return listOf(
