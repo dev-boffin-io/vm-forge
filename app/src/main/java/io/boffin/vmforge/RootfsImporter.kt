@@ -42,7 +42,14 @@ object RootfsImporter {
                 // which we feed from the picked content:// Uri, and extracts
                 // with full symlink/permission fidelity into destDir.
                 val process = ProcessBuilder(
-                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath
+                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath,
+                    // Device nodes (dev/null, dev/console, ...) require mknod(),
+                    // which Android's seccomp filter kills the process for
+                    // (SIGSYS, exit 159) rather than returning an error. Skip
+                    // them entirely — PRootLauncher bind-mounts the host's real
+                    // /dev over the rootfs at launch time (-b /dev), so the
+                    // archived ones are neither usable nor needed.
+                    "--exclude=dev/*", "--exclude=./dev/*"
                 )
                     .redirectErrorStream(true)
                     .apply {
