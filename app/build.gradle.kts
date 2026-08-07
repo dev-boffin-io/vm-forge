@@ -63,6 +63,4 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.2")
     // For extracting PRoot rootfs tarballs (tar.gz) picked via the file
     // importer — no bundled `tar` binary, so this is done in Kotlin.
-    implementation("org.apache.commons:commons-compress:1.26.2")
-    implementation("org.tukaani:xz:1.9") // commons-compress needs this for some compression formats
 }

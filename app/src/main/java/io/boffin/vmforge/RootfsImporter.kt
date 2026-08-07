@@ -2,16 +2,21 @@ package io.boffin.vmforge
 
 import android.content.Context
 import android.net.Uri
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Extracts a PRoot rootfs tarball (.tar.gz, e.g. a Debian/Ubuntu/Alpine
  * arm64 base rootfs from proot-distro or debootstrap) into
- * filesDir/proot-rootfs/, picked via the file importer — no `tar` binary
- * needed since this parses the archive directly in Kotlin.
+ * filesDir/proot-rootfs/.
+ *
+ * This shells out to a bundled `busybox tar` (jniLibs/arm64-v8a/
+ * libbusybox.so, dynamically linked — see LD_LIBRARY_PATH below)
+ * instead of parsing the tar format by hand. A real tar
+ * implementation handles symlinks (including usrmerge layouts where /bin
+ * is a symlink to usr/bin, created before usr/bin itself exists in
+ * archive order) and permission bits correctly — the previous hand-rolled
+ * Kotlin parser silently dropped some symlinks, producing a rootfs that
+ * "extracted successfully" but was missing /usr/bin/sh.
  */
 object RootfsImporter {
 
@@ -21,67 +26,73 @@ object RootfsImporter {
                 if (exists()) deleteRecursively()
                 mkdirs()
             }
-            var count = 0
-            var failedSymlinks = 0
-            val failedNames = mutableListOf<String>()
+            val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
+
+            if (!busybox.exists() || !busybox.canExecute()) {
+                onDone(
+                    false,
+                    "Bundled busybox not found at ${busybox.absolutePath} — " +
+                        "add libbusybox.so to app/src/main/jniLibs/arm64-v8a/"
+                )
+                return@Thread
+            }
+
             try {
-                context.contentResolver.openInputStream(uri)?.use { raw ->
-                    GzipCompressorInputStream(raw).use { gz ->
-                        TarArchiveInputStream(gz).use { tar ->
-                            var entry = tar.nextEntry
-                            while (entry != null) {
-                                val outFile = File(destDir, entry.name)
-                                if (entry.isDirectory) {
-                                    outFile.mkdirs()
-                                } else if (entry.isSymbolicLink) {
-                                    try {
-                                        outFile.parentFile?.mkdirs()
-                                        // If a previous entry (e.g. a stray placeholder) already
-                                        // occupies this path, remove it first so the symlink can
-                                        // actually be created instead of failing with EEXIST.
-                                        if (java.nio.file.Files.isSymbolicLink(outFile.toPath()) || outFile.exists()) {
-                                            outFile.delete()
-                                        }
-                                        java.nio.file.Files.createSymbolicLink(
-                                            outFile.toPath(), File(entry.linkName).toPath()
-                                        )
-                                    } catch (e: Exception) {
-                                        // No longer silent: track it so a broken rootfs is visible.
-                                        failedSymlinks++
-                                        failedNames.add("${entry.name} -> ${entry.linkName} (${e.message})")
-                                    }
-                                } else {
-                                    outFile.parentFile?.mkdirs()
-                                    FileOutputStream(outFile).use { out -> tar.copyTo(out) }
-                                    if ((entry.mode and 0b001000000) != 0) outFile.setExecutable(true)
-                                }
-                                count++
-                                entry = tar.nextEntry
-                            }
-                        }
+                // "busybox tar -xzf - -C destDir" reads the archive from stdin,
+                // which we feed from the picked content:// Uri, and extracts
+                // with full symlink/permission fidelity into destDir.
+                val process = ProcessBuilder(
+                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath
+                )
+                    .redirectErrorStream(true)
+                    .apply {
+                        // libbusybox.so is dynamically linked (NDK-built, not static)
+                        // and depends on libandroid-selinux.so bundled alongside it —
+                        // without this it fails to even start.
+                        environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
                     }
+                    .start()
+
+                var pumpError: Exception? = null
+                val pumpThread = Thread {
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            process.outputStream.use { out -> input.copyTo(out) }
+                        } ?: throw IllegalStateException("Could not open picked file")
+                    } catch (e: Exception) {
+                        pumpError = e
+                    }
+                }
+                pumpThread.start()
+
+                val log = process.inputStream.bufferedReader().readText()
+                val exitCode = process.waitFor()
+                pumpThread.join()
+
+                if (pumpError != null) {
+                    onDone(false, "Failed reading picked file: ${pumpError?.message}")
+                    return@Thread
+                }
+                if (exitCode != 0) {
+                    onDone(false, "tar extraction failed (exit $exitCode): ${log.takeLast(500)}")
+                    return@Thread
                 }
 
                 // Sanity-check that a shell actually resolves inside the extracted
-                // rootfs — this is exactly what caught the "execve /usr/bin/sh:
-                // No such file" failure. Follows symlinks manually since the
-                // filesystem symlink target may not exist as an absolute host path.
+                // rootfs. Belt-and-braces on top of a real tar: catches a wrong or
+                // incompatible archive (e.g. one with no /bin/sh at all) rather than
+                // only surfacing as proot's native "execve(...) No such file" error.
                 val shellOk = resolvesToRealFile(destDir, "bin/sh") || resolvesToRealFile(destDir, "usr/bin/sh")
-
-                when {
-                    failedSymlinks > 0 -> onDone(
+                if (!shellOk) {
+                    onDone(
                         false,
-                        "Extracted $count entries but $failedSymlinks symlink(s) failed " +
-                            "(rootfs is likely broken): ${failedNames.take(5).joinToString("; ")}" +
-                            if (failedNames.size > 5) " …and ${failedNames.size - 5} more" else ""
+                        "Extraction finished but no /bin/sh or /usr/bin/sh was found — " +
+                            "wrong or incompatible rootfs archive"
                     )
-                    !shellOk -> onDone(
-                        false,
-                        "Extracted $count entries but no working /bin/sh or /usr/bin/sh was found — " +
-                            "rootfs is incomplete/incompatible"
-                    )
-                    else -> onDone(true, "Extracted $count entries")
+                    return@Thread
                 }
+
+                onDone(true, "Rootfs extracted successfully")
             } catch (e: Exception) {
                 onDone(false, e.message ?: "unknown error")
             }
@@ -92,8 +103,7 @@ object RootfsImporter {
      * Manually resolves a path within [root], following symlinks (relative or
      * absolute-as-if-rooted-at [root], the same way proot itself would) up to
      * a small depth limit, and reports whether it lands on a real, non-empty
-     * regular file. Used post-extraction to confirm a shell actually exists,
-     * since a "successful" tar extraction can still leave dangling symlinks.
+     * regular file.
      */
     private fun resolvesToRealFile(root: File, relativePath: String, depth: Int = 0): Boolean {
         if (depth > 10) return false // guard against symlink loops
