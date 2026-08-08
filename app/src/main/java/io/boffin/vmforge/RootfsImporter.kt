@@ -87,25 +87,36 @@ object RootfsImporter {
                                                 isDeviceOrFifo(entry) -> {
                                                     // Skip — needs mknod(), seccomp-killed (see class doc).
                                                 }
-                                                entry.isLink -> {
-                                                    // Hard links need link()/linkat(), which Android's
-                                                    // seccomp filter appears to kill just like mknod().
-                                                    // Recreate as a symlink to the same target instead —
-                                                    // not byte-identical semantics, but functionally
-                                                    // equivalent for a rootfs and avoids the crash.
-                                                    val symlink = TarArchiveEntry(
-                                                        entry.name,
-                                                        org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK
-                                                    )
-                                                    symlink.linkName = entry.linkName
-                                                    tarOut.putArchiveEntry(symlink)
-                                                    tarOut.closeArchiveEntry()
-                                                }
                                                 else -> {
-                                                    tarOut.putArchiveEntry(entry)
-                                                    // No-op for directories/symlinks (zero-size entries)
-                                                    // — only regular files actually have data to copy.
-                                                    tarIn.copyTo(tarOut)
+                                                    // Rebuild a minimal, clean entry rather than passing
+                                                    // the parsed one through as-is. The original may carry
+                                                    // PAX extended records (xattrs, POSIX capabilities,
+                                                    // ACLs) which busybox tries to restore via
+                                                    // setxattr()/lsetxattr() after writing the file —
+                                                    // seccomp-killed the same way mknod()/link() are (this
+                                                    // is what actually crashed on etc/alternatives/awk, a
+                                                    // plain symlink with no special type of its own).
+                                                    // Hard links are rebuilt as symlinks instead: link()/
+                                                    // linkat() is seccomp-killed too.
+                                                    val linkFlag = if (entry.isLink) {
+                                                        org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK
+                                                    } else {
+                                                        entry.linkFlag
+                                                    }
+                                                    val clean = TarArchiveEntry(entry.name, linkFlag)
+                                                    clean.size = entry.size
+                                                    clean.mode = entry.mode
+                                                    clean.setModTime(entry.modTime)
+                                                    if (entry.isSymbolicLink || entry.isLink) {
+                                                        clean.linkName = entry.linkName
+                                                    }
+                                                    tarOut.putArchiveEntry(clean)
+                                                    // No-op for directories/symlinks/hardlinks
+                                                    // (zero-size entries) — only regular files
+                                                    // actually have data to copy.
+                                                    if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
+                                                        tarIn.copyTo(tarOut)
+                                                    }
                                                     tarOut.closeArchiveEntry()
                                                 }
                                             }
