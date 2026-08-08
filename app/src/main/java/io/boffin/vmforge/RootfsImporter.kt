@@ -86,12 +86,12 @@ object RootfsImporter {
                     // The process's own output is the real diagnostic here — a
                     // "Stream closed" pump error just means it died before we
                     // finished writing, which is a symptom, not the cause.
-                    onDone(false, "tar extraction failed (exit $exitCode): ${log.takeLast(500)}")
+                    onDone(false, "tar extraction failed (exit $exitCode): ${log.takeLast(4000)}")
                     return@Thread
                 }
                 if (pumpError != null) {
                     onDone(false, "Failed reading picked file: ${pumpError?.message}" +
-                        if (log.isNotBlank()) " — busybox output: ${log.takeLast(300)}" else "")
+                        if (log.isNotBlank()) " — busybox output: ${log.takeLast(2000)}" else "")
                     return@Thread
                 }
 

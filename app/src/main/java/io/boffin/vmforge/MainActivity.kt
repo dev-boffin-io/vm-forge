@@ -178,7 +178,11 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Extracting rootfs… this can take a while for a full distro", Toast.LENGTH_LONG).show()
                 RootfsImporter.extract(this, uri) { success, message ->
                     runOnUiThread {
-                        Toast.makeText(this, if (success) "Rootfs ready: $message" else "Extract failed: $message", Toast.LENGTH_LONG).show()
+                        if (success) {
+                            Toast.makeText(this, "Rootfs ready: $message", Toast.LENGTH_LONG).show()
+                        } else {
+                            showFullTextDialog("Extract failed", message)
+                        }
                     }
                 }
                 return
@@ -196,5 +200,25 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * Long diagnostic text (native tool output, stack traces) gets silently
+     * truncated by Toast — this shows it in full, scrollable and selectable
+     * so it can be copied out for a bug report.
+     */
+    private fun showFullTextDialog(title: String, message: String) {
+        val textView = TextView(this).apply {
+            text = message
+            setPadding(48, 32, 48, 32)
+            setTextIsSelectable(true)
+            textSize = 13f
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(textView) }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(scroll)
+            .setPositiveButton("OK", null)
+            .show()
     }
 }
