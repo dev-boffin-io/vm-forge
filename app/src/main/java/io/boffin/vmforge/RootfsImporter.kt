@@ -64,7 +64,7 @@ object RootfsImporter {
                 // stream from stdin ("-xf -", no "z" — we already decompress
                 // and re-encode as plain tar below).
                 val process = ProcessBuilder(
-                    busybox.absolutePath, "tar", "-xf", "-", "-C", destDir.absolutePath
+                    busybox.absolutePath, "tar", "-xvf", "-", "-C", destDir.absolutePath
                 )
                     .redirectErrorStream(true)
                     .start()
