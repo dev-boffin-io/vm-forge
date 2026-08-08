@@ -14,31 +14,34 @@ import java.io.File
  * filesDir/proot-rootfs/.
  *
  * The picked .tar.gz is re-streamed through Kotlin first — dropping any
- * device/FIFO entries (dev/null, dev/console, ...) and converting hard
- * links to symlinks — into a plain, uncompressed tar stream fed to a
- * bundled `busybox tar` (jniLibs/arm64-v8a/libbusybox.so) over stdin.
- * Everything else (regular files, directories, symlinks, permissions)
- * is handled by the real `tar` unmodified, so usrmerge-style layouts
- * and permission bits come out correct — only the specific entry types
- * that would trigger a privileged syscall are touched.
+ * device/FIFO entries (dev/null, dev/console, ...), converting hard links
+ * to symlinks, and rebuilding every entry without its original PAX
+ * extended records (xattrs/capabilities/ACLs) — into a plain, uncompressed
+ * tar stream fed to a bundled `busybox tar` (jniLibs/arm64-v8a/
+ * libbusybox.so) over stdin. Everything else (regular files, directories,
+ * symlinks, permissions) passes through unmodified, so usrmerge-style
+ * layouts and permission bits come out correct.
  *
- * Why filter instead of extracting directly:
- * - A prior hand-rolled Kotlin tar *parser* (writing files itself)
- *   silently dropped some symlinks, leaving a rootfs that "succeeded"
- *   but was missing /usr/bin/sh.
- * - Device nodes need mknod(), and hard links need link()/linkat() —
- *   both of which Android's seccomp filter kills the whole process for
- *   (SIGSYS, exit 159) rather than returning an error — busybox's
- *   --exclude isn't even compiled into this build to dodge the device
- *   nodes, and PRootLauncher bind-mounts the host's real /dev over the
- *   rootfs at launch time anyway (-b /dev), so archived device nodes
- *   are never actually needed.
- * - Wrapping the extraction in `proot -0` to fake mknod() was tried,
- *   but proot's own path canonicalization fails on Android's deeply
- *   nested, tilde-containing install path
- *   (/data/app/~~.../lib/arm64/...) with a spurious "No such file or
- *   directory" — a known proot limitation, not a real missing file. So
- *   this avoids proot entirely for extraction.
+ * Why all this filtering: extracting a full Linux rootfs needs mknod()
+ * (device nodes), link()/linkat() (hard links — common in dpkg-installed
+ * files), and setxattr()/lsetxattr() (POSIX capabilities, also common on
+ * Debian packages). Android's seccomp-bpf filter — installed by Zygote for
+ * every regular app process — kills the whole process outright (SIGSYS)
+ * for these, rather than returning a normal error tar could just warn
+ * about and continue past. Each of the three was found and fixed one at a
+ * time by tracking which archive entry was being processed when the
+ * process died (see git history) — this class now filters all three
+ * proactively before busybox ever sees them.
+ *
+ * A prior hand-rolled Kotlin tar *parser* (writing files itself instead of
+ * filtering-then-delegating to a real tar) was tried first and abandoned:
+ * it silently dropped some symlinks, leaving a rootfs that "succeeded" but
+ * was missing /usr/bin/sh. Wrapping extraction in `proot -0` (to fake
+ * mknod() via ptrace) was also tried and abandoned: proot's own path
+ * canonicalization fails on Android's deeply nested, tilde-containing
+ * install path (/data/app/~~.../lib/arm64/...) with a spurious "No such
+ * file or directory", a known proot limitation unrelated to the actual
+ * rootfs.
  */
 object RootfsImporter {
 
@@ -60,9 +63,6 @@ object RootfsImporter {
             }
 
             try {
-                // Plain busybox tar reading an uncompressed, pre-filtered tar
-                // stream from stdin ("-xf -", no "z" — we already decompress
-                // and re-encode as plain tar below).
                 val process = ProcessBuilder(
                     busybox.absolutePath, "tar", "-xvf", "-", "-C", destDir.absolutePath
                 )
@@ -83,42 +83,24 @@ object RootfsImporter {
                                         var entry = tarIn.nextTarEntry
                                         while (entry != null) {
                                             lastEntryName = entry.name
-                                            when {
-                                                isDeviceOrFifo(entry) -> {
-                                                    // Skip — needs mknod(), seccomp-killed (see class doc).
+                                            if (!isDeviceOrFifo(entry)) {
+                                                val linkFlag = if (entry.isLink) {
+                                                    org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK
+                                                } else {
+                                                    entry.linkFlag
                                                 }
-                                                else -> {
-                                                    // Rebuild a minimal, clean entry rather than passing
-                                                    // the parsed one through as-is. The original may carry
-                                                    // PAX extended records (xattrs, POSIX capabilities,
-                                                    // ACLs) which busybox tries to restore via
-                                                    // setxattr()/lsetxattr() after writing the file —
-                                                    // seccomp-killed the same way mknod()/link() are (this
-                                                    // is what actually crashed on etc/alternatives/awk, a
-                                                    // plain symlink with no special type of its own).
-                                                    // Hard links are rebuilt as symlinks instead: link()/
-                                                    // linkat() is seccomp-killed too.
-                                                    val linkFlag = if (entry.isLink) {
-                                                        org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK
-                                                    } else {
-                                                        entry.linkFlag
-                                                    }
-                                                    val clean = TarArchiveEntry(entry.name, linkFlag)
-                                                    clean.size = entry.size
-                                                    clean.mode = entry.mode
-                                                    clean.setModTime(entry.modTime)
-                                                    if (entry.isSymbolicLink || entry.isLink) {
-                                                        clean.linkName = entry.linkName
-                                                    }
-                                                    tarOut.putArchiveEntry(clean)
-                                                    // No-op for directories/symlinks/hardlinks
-                                                    // (zero-size entries) — only regular files
-                                                    // actually have data to copy.
-                                                    if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
-                                                        tarIn.copyTo(tarOut)
-                                                    }
-                                                    tarOut.closeArchiveEntry()
+                                                val clean = TarArchiveEntry(entry.name, linkFlag)
+                                                clean.size = entry.size
+                                                clean.mode = entry.mode
+                                                clean.setModTime(entry.modTime)
+                                                if (entry.isSymbolicLink || entry.isLink) {
+                                                    clean.linkName = entry.linkName
                                                 }
+                                                tarOut.putArchiveEntry(clean)
+                                                if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
+                                                    tarIn.copyTo(tarOut)
+                                                }
+                                                tarOut.closeArchiveEntry()
                                             }
                                             entry = tarIn.nextTarEntry
                                         }
@@ -138,9 +120,6 @@ object RootfsImporter {
                 pumpThread.join()
 
                 if (exitCode != 0) {
-                    // The process's own output is the real diagnostic here — a
-                    // pump error just means it died before we finished writing,
-                    // which is a symptom, not the cause.
                     onDone(
                         false,
                         "tar extraction failed (exit $exitCode), last entry sent: $lastEntryName\n" +
@@ -157,10 +136,6 @@ object RootfsImporter {
                     return@Thread
                 }
 
-                // Sanity-check that a shell actually resolves inside the extracted
-                // rootfs — catches a wrong or incompatible archive (e.g. one with
-                // no /bin/sh at all) rather than only surfacing later as proot's
-                // native "execve(...) No such file" error.
                 val shellOk = resolvesToRealFile(destDir, "bin/sh") || resolvesToRealFile(destDir, "usr/bin/sh")
                 if (!shellOk) {
                     onDone(
@@ -195,7 +170,7 @@ object RootfsImporter {
         }
         val link = java.nio.file.Files.readSymbolicLink(target.toPath()).toString()
         val nextRelative = if (link.startsWith("/")) {
-            link // absolute inside the rootfs, same as proot's guest-root translation
+            link
         } else {
             File(target.parentFile, link).path.removePrefix(root.path).removePrefix("/")
         }
