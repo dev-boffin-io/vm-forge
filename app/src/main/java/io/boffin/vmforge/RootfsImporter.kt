@@ -2,6 +2,10 @@ package io.boffin.vmforge
 
 import android.content.Context
 import android.net.Uri
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.File
 
 /**
@@ -9,14 +13,31 @@ import java.io.File
  * arm64 base rootfs from proot-distro or debootstrap) into
  * filesDir/proot-rootfs/.
  *
- * This shells out to a bundled `busybox tar` (jniLibs/arm64-v8a/
- * libbusybox.so) wrapped in `proot -0` (jniLibs/arm64-v8a/
- * libproot.so) instead of parsing the tar format by hand. A real tar
- * implementation handles symlinks (including usrmerge layouts where /bin
- * is a symlink to usr/bin, created before usr/bin itself exists in
- * archive order) and permission bits correctly — the previous hand-rolled
- * Kotlin parser silently dropped some symlinks, producing a rootfs that
- * "extracted successfully" but was missing /usr/bin/sh.
+ * The picked .tar.gz is re-streamed through Kotlin first — dropping any
+ * device/FIFO entries (dev/null, dev/console, ...) — into a plain,
+ * uncompressed tar stream fed to a bundled `busybox tar` (jniLibs/
+ * arm64-v8a/libbusybox.so) over stdin. Everything else (regular files,
+ * directories, symlinks, permissions) is handled by the real `tar`
+ * unmodified, so usrmerge-style layouts and permission bits come out
+ * correct — only the specific entry types that would trigger a
+ * privileged syscall are touched.
+ *
+ * Why filter instead of extracting directly:
+ * - A prior hand-rolled Kotlin tar *parser* (writing files itself)
+ *   silently dropped some symlinks, leaving a rootfs that "succeeded"
+ *   but was missing /usr/bin/sh.
+ * - Device nodes need mknod(), which Android's seccomp filter kills the
+ *   whole process for (SIGSYS, exit 159) rather than returning an
+ *   error — busybox's --exclude isn't even compiled into this build to
+ *   dodge it, and PRootLauncher bind-mounts the host's real /dev over
+ *   the rootfs at launch time anyway (-b /dev), so archived device
+ *   nodes are never actually needed.
+ * - Wrapping the extraction in `proot -0` to fake mknod() was tried,
+ *   but proot's own path canonicalization fails on Android's deeply
+ *   nested, tilde-containing install path
+ *   (/data/app/~~.../lib/arm64/...) with a spurious "No such file or
+ *   directory" — a known proot limitation, not a real missing file. So
+ *   this avoids proot entirely for extraction.
  */
 object RootfsImporter {
 
@@ -27,7 +48,6 @@ object RootfsImporter {
                 mkdirs()
             }
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
-            val proot = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
 
             if (!busybox.exists() || !busybox.canExecute()) {
                 onDone(
@@ -37,40 +57,43 @@ object RootfsImporter {
                 )
                 return@Thread
             }
-            if (!proot.exists() || !proot.canExecute()) {
-                onDone(false, "Bundled proot not found at ${proot.absolutePath}")
-                return@Thread
-            }
 
             try {
-                // Run tar under proot's fakeroot mode (-0): device nodes
-                // (dev/null, dev/console, ...) need mknod(), and Android's
-                // seccomp filter kills the process outright for that syscall
-                // (SIGSYS, exit 159) rather than returning an error — busybox's
-                // own --exclude flag isn't even compiled into this build to
-                // dodge it. Under proot, mknod is intercepted via ptrace and
-                // faked entirely in userspace before it ever reaches the
-                // kernel, so the real (blocked) syscall never happens — the
-                // same trick proot-distro/termux use to bootstrap rootfs
-                // tarballs as a non-root app.
-                val tmpDir = File(context.filesDir, "proot-tmp").apply { mkdirs() }
+                // Plain busybox tar reading an uncompressed, pre-filtered tar
+                // stream from stdin ("-xf -", no "z" — we already decompress
+                // and re-encode as plain tar below).
                 val process = ProcessBuilder(
-                    proot.absolutePath, "-0",
-                    busybox.absolutePath, "tar", "-xzf", "-", "-C", destDir.absolutePath
+                    busybox.absolutePath, "tar", "-xf", "-", "-C", destDir.absolutePath
                 )
                     .redirectErrorStream(true)
-                    .apply {
-                        environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
-                        environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
-                        environment()["TMPDIR"] = tmpDir.absolutePath
-                    }
                     .start()
 
                 var pumpError: Exception? = null
                 val pumpThread = Thread {
                     try {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            process.outputStream.use { out -> input.copyTo(out) }
+                        context.contentResolver.openInputStream(uri)?.use { raw ->
+                            GzipCompressorInputStream(raw).use { gz ->
+                                TarArchiveInputStream(gz).use { tarIn ->
+                                    TarArchiveOutputStream(process.outputStream).apply {
+                                        setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                                        setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
+                                    }.use { tarOut ->
+                                        var entry = tarIn.nextTarEntry
+                                        while (entry != null) {
+                                            if (!isDeviceOrFifo(entry)) {
+                                                tarOut.putArchiveEntry(entry)
+                                                // No-op for directories/symlinks/hardlinks
+                                                // (zero-size entries) — only regular files
+                                                // actually have data to copy.
+                                                tarIn.copyTo(tarOut)
+                                                tarOut.closeArchiveEntry()
+                                            }
+                                            entry = tarIn.nextTarEntry
+                                        }
+                                        tarOut.finish()
+                                    }
+                                }
+                            }
                         } ?: throw IllegalStateException("Could not open picked file")
                     } catch (e: Exception) {
                         pumpError = e
@@ -84,21 +107,24 @@ object RootfsImporter {
 
                 if (exitCode != 0) {
                     // The process's own output is the real diagnostic here — a
-                    // "Stream closed" pump error just means it died before we
-                    // finished writing, which is a symptom, not the cause.
+                    // pump error just means it died before we finished writing,
+                    // which is a symptom, not the cause.
                     onDone(false, "tar extraction failed (exit $exitCode): ${log.takeLast(4000)}")
                     return@Thread
                 }
                 if (pumpError != null) {
-                    onDone(false, "Failed reading picked file: ${pumpError?.message}" +
-                        if (log.isNotBlank()) " — busybox output: ${log.takeLast(2000)}" else "")
+                    onDone(
+                        false,
+                        "Failed reading picked file: ${pumpError?.message}" +
+                            if (log.isNotBlank()) " — busybox output: ${log.takeLast(2000)}" else ""
+                    )
                     return@Thread
                 }
 
                 // Sanity-check that a shell actually resolves inside the extracted
-                // rootfs. Belt-and-braces on top of a real tar: catches a wrong or
-                // incompatible archive (e.g. one with no /bin/sh at all) rather than
-                // only surfacing as proot's native "execve(...) No such file" error.
+                // rootfs — catches a wrong or incompatible archive (e.g. one with
+                // no /bin/sh at all) rather than only surfacing later as proot's
+                // native "execve(...) No such file" error.
                 val shellOk = resolvesToRealFile(destDir, "bin/sh") || resolvesToRealFile(destDir, "usr/bin/sh")
                 if (!shellOk) {
                     onDone(
@@ -115,6 +141,9 @@ object RootfsImporter {
             }
         }.start()
     }
+
+    private fun isDeviceOrFifo(entry: TarArchiveEntry): Boolean =
+        entry.isFIFO || entry.isCharacterDevice || entry.isBlockDevice
 
     /**
      * Manually resolves a path within [root], following symlinks (relative or
