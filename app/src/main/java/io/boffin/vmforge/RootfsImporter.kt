@@ -22,10 +22,13 @@ import java.io.File
  * directories, symlinks, permissions) passes through unmodified.
  *
  * Why all this filtering: extracting a full Linux rootfs needs mknod(),
- * link()/linkat(), and setxattr()/lsetxattr(). Android's seccomp-bpf
- * filter — installed by Zygote for every regular app process — kills the
- * whole process outright (SIGSYS, exit 159) for these, rather than
- * returning a normal error tar could just warn about and continue past.
+ * link()/linkat(), setxattr()/lsetxattr(), and chmod() with setuid/setgid/
+ * sticky bits. Android's seccomp-bpf filter — installed by Zygote for
+ * every regular app process — kills the whole process outright (SIGSYS,
+ * exit 159) for these, rather than returning a normal error tar could
+ * just warn about and continue past. The last of these was found via
+ * binary search (see [findCrashingEntry]) on the archive's very first
+ * entry, "./" (the root directory, commonly mode 01777 or similar).
  *
  * Extraction reads from a real temp *file*, not a stdin pipe: piping made
  * "which entry was tar processing when it died" fundamentally unreliable
@@ -190,7 +193,14 @@ object RootfsImporter {
                                     val linkFlag = if (entry.isLink) TarConstants.LF_SYMLINK else entry.linkFlag
                                     val clean = TarArchiveEntry(entry.name, linkFlag)
                                     clean.size = entry.size
-                                    clean.mode = entry.mode
+                                    // Strip setuid/setgid/sticky (04000/02000/01000) —
+                                    // chmod() with those bits set is apparently also
+                                    // seccomp-killed, same as mknod/link/setxattr. This
+                                    // was the actual cause of the crash on the archive's
+                                    // very first entry, "./" (the root directory, often
+                                    // mode 01777 or similar). Not needed for a working
+                                    // rootfs under PRoot anyway.
+                                    clean.mode = entry.mode and 0x1FF // keep rwxrwxrwx only
                                     clean.setModTime(entry.modTime)
                                     if (entry.isSymbolicLink || entry.isLink) {
                                         clean.linkName = entry.linkName
