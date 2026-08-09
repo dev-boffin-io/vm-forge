@@ -22,13 +22,12 @@ import java.io.File
  * directories, symlinks, permissions) passes through unmodified.
  *
  * Why all this filtering: extracting a full Linux rootfs needs mknod(),
- * link()/linkat(), setxattr()/lsetxattr(), and chmod() with setuid/setgid/
- * sticky bits. Android's seccomp-bpf filter — installed by Zygote for
- * every regular app process — kills the whole process outright (SIGSYS,
- * exit 159) for these, rather than returning a normal error tar could
- * just warn about and continue past. The last of these was found via
- * binary search (see [findCrashingEntry]) on the archive's very first
- * entry, "./" (the root directory, commonly mode 01777 or similar).
+ * link()/linkat(), and setxattr()/lsetxattr(). Android's seccomp-bpf
+ * filter — installed by Zygote for every regular app process — kills the
+ * whole process outright (SIGSYS, exit 159) for these, rather than
+ * returning a normal error tar could just warn about and continue past.
+ * A fourth crash, on the archive's own root entry ("./"), turned out to
+ * be unrelated to any of that — see [isArchiveRoot].
  *
  * Extraction reads from a real temp *file*, not a stdin pipe: piping made
  * "which entry was tar processing when it died" fundamentally unreliable
@@ -143,7 +142,7 @@ object RootfsImporter {
                 TarArchiveInputStream(gz).use { tarIn ->
                     var entry = tarIn.nextTarEntry
                     while (entry != null) {
-                        if (!isDeviceOrFifo(entry)) count++
+                        if (!isDeviceOrFifo(entry) && !isArchiveRoot(entry)) count++
                         entry = tarIn.nextTarEntry
                     }
                 }
@@ -160,7 +159,7 @@ object RootfsImporter {
                 TarArchiveInputStream(gz).use { tarIn ->
                     var entry = tarIn.nextTarEntry
                     while (entry != null) {
-                        if (!isDeviceOrFifo(entry)) {
+                        if (!isDeviceOrFifo(entry) && !isArchiveRoot(entry)) {
                             current++
                             if (current == index) return entry.name
                         }
@@ -189,7 +188,7 @@ object RootfsImporter {
                         }.use { tarOut ->
                             var entry = tarIn.nextTarEntry
                             while (entry != null && written < entryLimit) {
-                                if (!isDeviceOrFifo(entry)) {
+                                if (!isDeviceOrFifo(entry) && !isArchiveRoot(entry)) {
                                     val linkFlag = if (entry.isLink) TarConstants.LF_SYMLINK else entry.linkFlag
                                     val clean = TarArchiveEntry(entry.name, linkFlag)
                                     clean.size = entry.size
@@ -237,6 +236,21 @@ object RootfsImporter {
 
     private fun isDeviceOrFifo(entry: TarArchiveEntry): Boolean =
         entry.isFIFO || entry.isCharacterDevice || entry.isBlockDevice
+
+    /**
+     * True for the archive's own root entry (".", "./") — this maps to the
+     * exact same path as -C destDir, which we already create ourselves in
+     * Kotlin before invoking tar. Extracting it turned out to be what was
+     * actually crashing (found via binary search — not the setuid/setgid
+     * mode bits, which were the working theory but didn't fix it): tar
+     * appears to do something to this self-referential entry (rename/chmod
+     * on what's effectively its own working directory) that trips the same
+     * seccomp kill. Skipping it entirely sidesteps whatever that is.
+     */
+    private fun isArchiveRoot(entry: TarArchiveEntry): Boolean {
+        val normalized = entry.name.removePrefix("./").removeSuffix("/")
+        return normalized.isEmpty()
+    }
 
     /**
      * Manually resolves a path within [root], following symlinks (relative or
