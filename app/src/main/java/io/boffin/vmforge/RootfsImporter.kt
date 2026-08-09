@@ -5,6 +5,7 @@ import android.net.Uri
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.apache.commons.compress.archivers.tar.TarConstants
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import java.io.File
 
@@ -14,44 +15,40 @@ import java.io.File
  * filesDir/proot-rootfs/.
  *
  * The picked .tar.gz is re-streamed through Kotlin first — dropping any
- * device/FIFO entries (dev/null, dev/console, ...), converting hard links
- * to symlinks, and rebuilding every entry without its original PAX
- * extended records (xattrs/capabilities/ACLs) — into a plain, uncompressed
- * tar stream fed to a bundled `busybox tar` (jniLibs/arm64-v8a/
- * libbusybox.so) over stdin. Everything else (regular files, directories,
- * symlinks, permissions) passes through unmodified, so usrmerge-style
- * layouts and permission bits come out correct.
+ * device/FIFO entries, converting hard links to symlinks, and rebuilding
+ * every entry without its original PAX extended records (xattrs/
+ * capabilities/ACLs) — into a plain tar file fed to a bundled `busybox
+ * tar` (jniLibs/arm64-v8a/libbusybox.so). Everything else (regular files,
+ * directories, symlinks, permissions) passes through unmodified.
  *
- * Why all this filtering: extracting a full Linux rootfs needs mknod()
- * (device nodes), link()/linkat() (hard links — common in dpkg-installed
- * files), and setxattr()/lsetxattr() (POSIX capabilities, also common on
- * Debian packages). Android's seccomp-bpf filter — installed by Zygote for
- * every regular app process — kills the whole process outright (SIGSYS)
- * for these, rather than returning a normal error tar could just warn
- * about and continue past. Each of the three was found and fixed one at a
- * time by tracking which archive entry was being processed when the
- * process died (see git history) — this class now filters all three
- * proactively before busybox ever sees them.
+ * Why all this filtering: extracting a full Linux rootfs needs mknod(),
+ * link()/linkat(), and setxattr()/lsetxattr(). Android's seccomp-bpf
+ * filter — installed by Zygote for every regular app process — kills the
+ * whole process outright (SIGSYS, exit 159) for these, rather than
+ * returning a normal error tar could just warn about and continue past.
  *
- * A prior hand-rolled Kotlin tar *parser* (writing files itself instead of
- * filtering-then-delegating to a real tar) was tried first and abandoned:
- * it silently dropped some symlinks, leaving a rootfs that "succeeded" but
- * was missing /usr/bin/sh. Wrapping extraction in `proot -0` (to fake
- * mknod() via ptrace) was also tried and abandoned: proot's own path
- * canonicalization fails on Android's deeply nested, tilde-containing
- * install path (/data/app/~~.../lib/arm64/...) with a spurious "No such
- * file or directory", a known proot limitation unrelated to the actual
- * rootfs.
+ * Extraction reads from a real temp *file*, not a stdin pipe: piping made
+ * "which entry was tar processing when it died" fundamentally unreliable
+ * — SIGSYS is abrupt enough that busybox's own buffered stdout (even with
+ * -v) never gets flushed, and our writer thread can be a pipe-buffer's
+ * worth of entries ahead of what tar actually consumed. If extraction
+ * still fails after the three known filters, [findCrashingEntry] does a
+ * binary search — re-extracting bounded *prefixes* of the filtered entry
+ * list against real files, immune to buffering — to name the exact entry
+ * so a fourth filter can be added with certainty instead of another guess.
+ *
+ * Earlier abandoned approaches, for anyone re-reading this history: a
+ * hand-rolled Kotlin tar *parser* (writing files itself) silently dropped
+ * some symlinks; wrapping extraction in `proot -0` hit a proot path-
+ * canonicalization bug on Android's tilde-containing install path.
  */
 object RootfsImporter {
 
     fun extract(context: Context, uri: Uri, onDone: (Boolean, String) -> Unit) {
         Thread {
-            val destDir = File(context.filesDir, "proot-rootfs").apply {
-                if (exists()) deleteRecursively()
-                mkdirs()
-            }
+            val destDir = File(context.filesDir, "proot-rootfs")
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
+            val tmpTar = File(context.cacheDir, "rootfs-filtered.tar")
 
             if (!busybox.exists() || !busybox.canExecute()) {
                 onDone(
@@ -63,76 +60,23 @@ object RootfsImporter {
             }
 
             try {
-                val process = ProcessBuilder(
-                    busybox.absolutePath, "tar", "-xvf", "-", "-C", destDir.absolutePath
-                )
-                    .redirectErrorStream(true)
-                    .start()
+                // Build the fully-filtered tar as a real file first — see
+                // class doc for why (removes pipe-buffering ambiguity).
+                writeFilteredTar(context, uri, tmpTar, entryLimit = Int.MAX_VALUE)
 
-                var pumpError: Exception? = null
-                var lastEntryName = "(none — stream ended or crashed before any entry)"
-                val pumpThread = Thread {
-                    try {
-                        context.contentResolver.openInputStream(uri)?.use { raw ->
-                            GzipCompressorInputStream(raw).use { gz ->
-                                TarArchiveInputStream(gz).use { tarIn ->
-                                    TarArchiveOutputStream(process.outputStream).apply {
-                                        setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
-                                        setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
-                                    }.use { tarOut ->
-                                        var entry = tarIn.nextTarEntry
-                                        while (entry != null) {
-                                            lastEntryName = entry.name
-                                            if (!isDeviceOrFifo(entry)) {
-                                                val linkFlag = if (entry.isLink) {
-                                                    org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK
-                                                } else {
-                                                    entry.linkFlag
-                                                }
-                                                val clean = TarArchiveEntry(entry.name, linkFlag)
-                                                clean.size = entry.size
-                                                clean.mode = entry.mode
-                                                clean.setModTime(entry.modTime)
-                                                if (entry.isSymbolicLink || entry.isLink) {
-                                                    clean.linkName = entry.linkName
-                                                }
-                                                tarOut.putArchiveEntry(clean)
-                                                if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
-                                                    tarIn.copyTo(tarOut)
-                                                }
-                                                tarOut.closeArchiveEntry()
-                                            }
-                                            entry = tarIn.nextTarEntry
-                                        }
-                                        tarOut.finish()
-                                    }
-                                }
-                            }
-                        } ?: throw IllegalStateException("Could not open picked file")
-                    } catch (e: Exception) {
-                        pumpError = e
-                    }
-                }
-                pumpThread.start()
-
-                val log = process.inputStream.bufferedReader().readText()
-                val exitCode = process.waitFor()
-                pumpThread.join()
+                val (exitCode, log) = runBusyboxTar(busybox, tmpTar, destDir)
 
                 if (exitCode != 0) {
-                    onDone(
-                        false,
-                        "tar extraction failed (exit $exitCode), last entry sent: $lastEntryName\n" +
-                            log.takeLast(4000)
-                    )
-                    return@Thread
-                }
-                if (pumpError != null) {
-                    onDone(
-                        false,
-                        "Failed reading picked file: ${pumpError?.message}, last entry sent: $lastEntryName" +
-                            if (log.isNotBlank()) " — busybox output: ${log.takeLast(2000)}" else ""
-                    )
+                    var message = "tar extraction failed (exit $exitCode): ${log.takeLast(2000)}"
+                    if (exitCode == 159) {
+                        // SIGSYS (seccomp kill) — pin down exactly which
+                        // entry by binary-searching prefix lengths.
+                        val culprit = findCrashingEntry(context, uri, busybox)
+                        message = "tar extraction crashed (exit 159, seccomp-killed on a " +
+                            "privileged syscall) at entry: ${culprit ?: "(could not isolate — " +
+                            "crash may not be reproducible in isolation)"}"
+                    }
+                    onDone(false, message)
                     return@Thread
                 }
 
@@ -149,8 +93,136 @@ object RootfsImporter {
                 onDone(true, "Rootfs extracted successfully")
             } catch (e: Exception) {
                 onDone(false, e.message ?: "unknown error")
+            } finally {
+                tmpTar.delete()
             }
         }.start()
+    }
+
+    /**
+     * Binary-searches the smallest filtered-entry-count prefix that still
+     * crashes busybox, then returns the name of that boundary entry — the
+     * one whose inclusion is what actually triggers the SIGSYS. Each probe
+     * is a fresh, complete, real tar file (no pipe involved), so the
+     * result is exact regardless of buffering.
+     */
+    private fun findCrashingEntry(context: Context, uri: Uri, busybox: File): String? {
+        val total = countFilteredEntries(context, uri)
+        if (total == 0) return null
+
+        val probeTar = File(context.cacheDir, "rootfs-probe.tar")
+        val probeDest = File(context.cacheDir, "rootfs-probe-dest")
+        try {
+            var low = 0      // largest known-good prefix count
+            var high = total // smallest known-bad prefix count
+
+            writeFilteredTar(context, uri, probeTar, entryLimit = high)
+            if (runBusyboxTar(busybox, probeTar, probeDest).first != 159) return null
+
+            while (high - low > 1) {
+                val mid = (low + high) / 2
+                writeFilteredTar(context, uri, probeTar, entryLimit = mid)
+                val (code, _) = runBusyboxTar(busybox, probeTar, probeDest)
+                if (code == 159) high = mid else low = mid
+            }
+            return nameOfFilteredEntry(context, uri, high - 1) // 0-indexed, last entry in the failing prefix
+        } finally {
+            probeTar.delete()
+            probeDest.deleteRecursively()
+        }
+    }
+
+    /** Parses the archive, applying the same filter as extraction, without buffering file data. */
+    private fun countFilteredEntries(context: Context, uri: Uri): Int {
+        var count = 0
+        context.contentResolver.openInputStream(uri)?.use { raw ->
+            GzipCompressorInputStream(raw).use { gz ->
+                TarArchiveInputStream(gz).use { tarIn ->
+                    var entry = tarIn.nextTarEntry
+                    while (entry != null) {
+                        if (!isDeviceOrFifo(entry)) count++
+                        entry = tarIn.nextTarEntry
+                    }
+                }
+            }
+        }
+        return count
+    }
+
+    /** Name of the [index]-th (0-based) filtered entry, without buffering file data. */
+    private fun nameOfFilteredEntry(context: Context, uri: Uri, index: Int): String? {
+        var current = -1
+        context.contentResolver.openInputStream(uri)?.use { raw ->
+            GzipCompressorInputStream(raw).use { gz ->
+                TarArchiveInputStream(gz).use { tarIn ->
+                    var entry = tarIn.nextTarEntry
+                    while (entry != null) {
+                        if (!isDeviceOrFifo(entry)) {
+                            current++
+                            if (current == index) return entry.name
+                        }
+                        entry = tarIn.nextTarEntry
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Writes the first [entryLimit] filtered entries as a real tar file at
+     * [dest], streaming file data directly from the source archive (never
+     * buffering a whole file's bytes in memory).
+     */
+    private fun writeFilteredTar(context: Context, uri: Uri, dest: File, entryLimit: Int) {
+        var written = 0
+        context.contentResolver.openInputStream(uri)?.use { raw ->
+            GzipCompressorInputStream(raw).use { gz ->
+                TarArchiveInputStream(gz).use { tarIn ->
+                    dest.outputStream().use { fileOut ->
+                        TarArchiveOutputStream(fileOut).apply {
+                            setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
+                            setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_STAR)
+                        }.use { tarOut ->
+                            var entry = tarIn.nextTarEntry
+                            while (entry != null && written < entryLimit) {
+                                if (!isDeviceOrFifo(entry)) {
+                                    val linkFlag = if (entry.isLink) TarConstants.LF_SYMLINK else entry.linkFlag
+                                    val clean = TarArchiveEntry(entry.name, linkFlag)
+                                    clean.size = entry.size
+                                    clean.mode = entry.mode
+                                    clean.setModTime(entry.modTime)
+                                    if (entry.isSymbolicLink || entry.isLink) {
+                                        clean.linkName = entry.linkName
+                                    }
+                                    tarOut.putArchiveEntry(clean)
+                                    if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
+                                        tarIn.copyTo(tarOut)
+                                    }
+                                    tarOut.closeArchiveEntry()
+                                    written++
+                                }
+                                entry = tarIn.nextTarEntry
+                            }
+                            tarOut.finish()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun runBusyboxTar(busybox: File, tarFile: File, destDir: File): Pair<Int, String> {
+        destDir.deleteRecursively()
+        destDir.mkdirs()
+        val process = ProcessBuilder(
+            busybox.absolutePath, "tar", "-xf", tarFile.absolutePath, "-C", destDir.absolutePath
+        )
+            .redirectErrorStream(true)
+            .start()
+        val log = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        return exitCode to log
     }
 
     private fun isDeviceOrFifo(entry: TarArchiveEntry): Boolean =
@@ -163,7 +235,7 @@ object RootfsImporter {
      * regular file.
      */
     private fun resolvesToRealFile(root: File, relativePath: String, depth: Int = 0): Boolean {
-        if (depth > 10) return false // guard against symlink loops
+        if (depth > 10) return false
         val target = File(root, relativePath.removePrefix("/"))
         if (!java.nio.file.Files.isSymbolicLink(target.toPath())) {
             return target.isFile && target.length() > 0
