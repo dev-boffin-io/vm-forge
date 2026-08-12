@@ -127,7 +127,7 @@ object RootfsImporter {
                 val (code, _) = runBusyboxTar(busybox, probeTar, probeDest)
                 if (code == 159) high = mid else low = mid
             }
-            return nameOfFilteredEntry(context, uri, high - 1) // 0-indexed, last entry in the failing prefix
+            return detailsOfFilteredEntry(context, uri, high - 1) // 0-indexed, last entry in the failing prefix
         } finally {
             probeTar.delete()
             probeDest.deleteRecursively()
@@ -151,8 +151,8 @@ object RootfsImporter {
         return count
     }
 
-    /** Name of the [index]-th (0-based) filtered entry, without buffering file data. */
-    private fun nameOfFilteredEntry(context: Context, uri: Uri, index: Int): String? {
+    /** Full diagnostic details for the [index]-th (0-based) filtered entry. */
+    private fun detailsOfFilteredEntry(context: Context, uri: Uri, index: Int): String? {
         var current = -1
         context.contentResolver.openInputStream(uri)?.use { raw ->
             GzipCompressorInputStream(raw).use { gz ->
@@ -161,7 +161,17 @@ object RootfsImporter {
                     while (entry != null) {
                         if (!isDeviceOrFifo(entry) && !isArchiveRoot(entry)) {
                             current++
-                            if (current == index) return entry.name
+                            if (current == index) {
+                                val type = when {
+                                    entry.isDirectory -> "directory"
+                                    entry.isSymbolicLink -> "symlink -> ${entry.linkName}"
+                                    entry.isLink -> "hardlink -> ${entry.linkName}"
+                                    else -> "file"
+                                }
+                                return "name='${entry.name}' type=$type mode=${
+                                    Integer.toOctalString(entry.mode)
+                                } size=${entry.size}"
+                            }
                         }
                         entry = tarIn.nextTarEntry
                     }
@@ -204,13 +214,19 @@ object RootfsImporter {
                                         // this was the crash on "bin" (bin -> usr/bin).
                                         clean.mode = 0x1FF // 0777
                                         clean.linkName = entry.linkName
+                                        // Do NOT set mtime on symlinks: doing so needs
+                                        // utimensat(..., AT_SYMLINK_NOFOLLOW) — a
+                                        // symlink-specific syscall variant, same family
+                                        // as the chmod one above, and apparently also
+                                        // seccomp-killed (this is what was still crashing
+                                        // on "bin" even after the mode fix alone).
                                     } else {
                                         // Strip setuid/setgid/sticky (04000/02000/01000)
                                         // — chmod() with those bits set is also
                                         // seccomp-killed, same as mknod/link/setxattr.
                                         clean.mode = entry.mode and 0x1FF // keep rwxrwxrwx only
+                                        clean.setModTime(entry.modTime)
                                     }
-                                    clean.setModTime(entry.modTime)
                                     tarOut.putArchiveEntry(clean)
                                     if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
                                         tarIn.copyTo(tarOut)
