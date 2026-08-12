@@ -192,18 +192,25 @@ object RootfsImporter {
                                     val linkFlag = if (entry.isLink) TarConstants.LF_SYMLINK else entry.linkFlag
                                     val clean = TarArchiveEntry(entry.name, linkFlag)
                                     clean.size = entry.size
-                                    // Strip setuid/setgid/sticky (04000/02000/01000) —
-                                    // chmod() with those bits set is apparently also
-                                    // seccomp-killed, same as mknod/link/setxattr. This
-                                    // was the actual cause of the crash on the archive's
-                                    // very first entry, "./" (the root directory, often
-                                    // mode 01777 or similar). Not needed for a working
-                                    // rootfs under PRoot anyway.
-                                    clean.mode = entry.mode and 0x1FF // keep rwxrwxrwx only
-                                    clean.setModTime(entry.modTime)
                                     if (entry.isSymbolicLink || entry.isLink) {
+                                        // Symlink permissions are meaningless on Linux
+                                        // (the kernel always treats them as effectively
+                                        // 777) — use the conventional default instead of
+                                        // the archive's stored mode, so busybox has no
+                                        // reason to attempt an explicit symlink-chmod
+                                        // after creating it. That call (fchmodat with
+                                        // AT_SYMLINK_NOFOLLOW, possibly the newer
+                                        // fchmodat2) is apparently also seccomp-killed —
+                                        // this was the crash on "bin" (bin -> usr/bin).
+                                        clean.mode = 0x1FF // 0777
                                         clean.linkName = entry.linkName
+                                    } else {
+                                        // Strip setuid/setgid/sticky (04000/02000/01000)
+                                        // — chmod() with those bits set is also
+                                        // seccomp-killed, same as mknod/link/setxattr.
+                                        clean.mode = entry.mode and 0x1FF // keep rwxrwxrwx only
                                     }
+                                    clean.setModTime(entry.modTime)
                                     tarOut.putArchiveEntry(clean)
                                     if (!entry.isDirectory && !entry.isSymbolicLink && !entry.isLink) {
                                         tarIn.copyTo(tarOut)
