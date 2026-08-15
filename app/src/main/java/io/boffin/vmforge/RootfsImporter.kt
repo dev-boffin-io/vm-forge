@@ -17,10 +17,14 @@ import java.io.File
  * The picked .tar.gz is re-streamed through Kotlin first — dropping any
  * device/FIFO entries and the archive's own root entry, converting hard
  * links to symlinks, stripping setuid/setgid/sticky bits, and skipping
- * mtime on symlinks — into a plain tar stream piped to a bundled
- * `busybox tar` (jniLibs/arm64-v8a/libbusybox.so) over stdin, with
- * --no-same-owner so it doesn't attempt chown(). Everything else (regular
- * files, directories, symlinks, permissions) passes through unmodified.
+ * mtime on symlinks — into a plain tar stream piped over stdin to a tar
+ * binary, preferring the device's own /system/bin/tar or toybox over our
+ * bundled busybox (see [resolveTarCommand] — an in-process syscall
+ * diagnostic proved symlink/lchown/readlink/lstat all work fine directly,
+ * yet busybox still crashed on the same entry every time, pointing at a
+ * problem with that specific static build rather than any syscall being
+ * universally blocked). Everything else (regular files, directories,
+ * symlinks, permissions) passes through unmodified.
  *
  * IMPORTANT: extraction pipes to stdin ("-xf -"), not a real temp file.
  * An earlier version switched to a real file specifically to make
@@ -51,12 +55,14 @@ object RootfsImporter {
         Thread {
             val destDir = File(context.filesDir, "proot-rootfs")
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
+            val tarCmd = resolveTarCommand(context)
 
-            if (!busybox.exists() || !busybox.canExecute()) {
+            if (!File(tarCmd.first()).canExecute()) {
                 onDone(
                     false,
-                    "Bundled busybox not found at ${busybox.absolutePath} — " +
-                        "add libbusybox.so to app/src/main/jniLibs/arm64-v8a/"
+                    "No usable tar found (checked /system/bin/tar, /system/bin/toybox, and " +
+                        "bundled ${busybox.absolutePath}) — add libbusybox.so to " +
+                        "app/src/main/jniLibs/arm64-v8a/ as a fallback"
                 )
                 return@Thread
             }
@@ -173,8 +179,31 @@ object RootfsImporter {
     }
 
     /**
+     * Prefers the device's own tar (usually a toybox applet — stock Android
+     * has used toybox for its built-in command-line utilities since
+     * Marshmallow) over our bundled busybox. The syscall diagnostic proved
+     * symlink/lchown/readlink/lstat all work fine directly from our own
+     * process, yet busybox still crashes on the same entry — pointing at
+     * something wrong with that specific static build itself rather than
+     * any syscall being universally blocked. The system's own tar is
+     * guaranteed compatible with the device's security model, being part
+     * of the OS itself. Returns the argv prefix to invoke it (e.g.
+     * ["/system/bin/tar"] or ["/system/bin/toybox", "tar"]), falling back
+     * to our bundled busybox only if neither system option is executable.
+     */
+    private fun resolveTarCommand(context: Context): List<String> {
+        val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
+        val candidates = listOf(
+            listOf("/system/bin/tar"),
+            listOf("/system/bin/toybox", "tar"),
+            listOf(busybox.absolutePath, "tar")
+        )
+        return candidates.firstOrNull { File(it.first()).canExecute() } ?: listOf(busybox.absolutePath, "tar")
+    }
+
+    /**
      * Filters the archive down to the first [entryLimit] surviving entries
-     * and pipes them as a plain tar stream directly into a fresh busybox
+     * and pipes them as a plain tar stream directly into a fresh tar
      * process's stdin, extracting into [destDir]. Returns (exitCode,
      * combined stdout+stderr).
      */
@@ -188,8 +217,9 @@ object RootfsImporter {
         destDir.deleteRecursively()
         destDir.mkdirs()
 
+        val tarCmd = resolveTarCommand(context)
         val process = ProcessBuilder(
-            busybox.absolutePath, "tar", "--no-same-owner", "-xf", "-", "-C", destDir.absolutePath
+            tarCmd + listOf("--no-same-owner", "-xf", "-", "-C", destDir.absolutePath)
         )
             .redirectErrorStream(true)
             .start()
