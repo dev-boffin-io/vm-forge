@@ -36,6 +36,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // If a previous SyscallDiagnostic.runDiagnostic() run force-closed
+        // the app, this reports exactly which step it died on.
+        SyscallDiagnostic.readAndClearCrashedStep(this)?.let { crashedStep ->
+            showFullTextDialog(
+                "Syscall diagnostic result",
+                "The app force-closed during the last diagnostic run while attempting: $crashedStep\n\n" +
+                    "This is the syscall that's actually being seccomp-killed."
+            )
+        }
+
         val accelStatusView = findViewById<TextView>(R.id.accelStatus)
         val startButton = findViewById<Button>(R.id.startVmButton)
         val stopButton = findViewById<Button>(R.id.stopVmButton)
@@ -145,6 +155,19 @@ class MainActivity : AppCompatActivity() {
                 type = "*/*"
             }
             startActivityForResult(intent, PICK_ROOTFS_REQUEST)
+        }
+        findViewById<Button>(R.id.diagnoseSyscallButton).setOnClickListener {
+            Toast.makeText(
+                this,
+                "Running syscall diagnostic — the app may force-close, that's expected. Reopen it after.",
+                Toast.LENGTH_LONG
+            ).show()
+            Thread {
+                val result = SyscallDiagnostic.runDiagnostic(this)
+                runOnUiThread {
+                    showFullTextDialog("Syscall diagnostic — none crashed", result)
+                }
+            }.start()
         }
         findViewById<Button>(R.id.startProotButton).setOnClickListener {
             if (!PRootLauncher(this).rootfsExists()) {
