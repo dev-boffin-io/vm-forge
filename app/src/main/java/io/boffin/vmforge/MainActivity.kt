@@ -169,6 +169,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }.start()
         }
+        findViewById<Button>(R.id.verifyRootfsButton).setOnClickListener {
+            showFullTextDialog("Rootfs contents", PRootLauncher(this).verifyRootfs())
+        }
         findViewById<Button>(R.id.startProotButton).setOnClickListener {
             if (!PRootLauncher(this).rootfsExists()) {
                 Toast.makeText(this, "No rootfs imported yet — use \"Import PRoot rootfs\" first", Toast.LENGTH_LONG).show()

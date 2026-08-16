@@ -163,6 +163,13 @@
         android:text="Diagnose Extraction Crash (may force-close)" />
 
     <Button
+        android:id="@+id/verifyRootfsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Verify Rootfs Contents" />
+
+    <Button
         android:id="@+id/startProotButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

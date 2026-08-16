@@ -47,6 +47,55 @@ class PRootLauncher(private val context: Context) {
         return resolves("bin/sh") || resolves("usr/bin/sh")
     }
 
+    /**
+     * Detailed version of [rootfsHasShell] for when it (or a live proot
+     * session) says the shell is missing but extraction reported success —
+     * walks the same symlink chain and reports exactly where it breaks,
+     * plus what's actually at the top level of the rootfs, instead of
+     * just true/false.
+     */
+    fun verifyRootfs(): String {
+        val report = StringBuilder()
+        report.appendLine("rootfsDir = ${rootfsDir.absolutePath}")
+        report.appendLine("exists = ${rootfsDir.exists()}, top-level entries:")
+        rootfsDir.listFiles()?.sortedBy { it.name }?.forEach { f ->
+            val kind = when {
+                java.nio.file.Files.isSymbolicLink(f.toPath()) ->
+                    "symlink -> ${java.nio.file.Files.readSymbolicLink(f.toPath())}"
+                f.isDirectory -> "directory"
+                else -> "file (${f.length()} bytes)"
+            }
+            report.appendLine("  ${f.name}: $kind")
+        } ?: report.appendLine("  (couldn't list — rootfsDir missing or not a directory)")
+
+        fun walk(path: String, depth: Int = 0) {
+            val indent = "  ".repeat(depth + 1)
+            if (depth > 10) {
+                report.appendLine("$indent(too many symlink hops, stopping)")
+                return
+            }
+            val f = File(rootfsDir, path.removePrefix("/"))
+            when {
+                java.nio.file.Files.isSymbolicLink(f.toPath()) -> {
+                    val link = java.nio.file.Files.readSymbolicLink(f.toPath()).toString()
+                    report.appendLine("$indent$path -> symlink -> $link")
+                    val next = if (link.startsWith("/")) link
+                               else File(f.parentFile, link).path.removePrefix(rootfsDir.path).removePrefix("/")
+                    walk(next, depth + 1)
+                }
+                f.isFile -> report.appendLine("$indent$path -> real file, ${f.length()} bytes, executable=${f.canExecute()}")
+                f.isDirectory -> report.appendLine("$indent$path -> directory (not a shell)")
+                else -> report.appendLine("$indent$path -> MISSING (nothing here)")
+            }
+        }
+        report.appendLine("Resolving /bin/sh:")
+        walk("bin/sh")
+        report.appendLine("Resolving /usr/bin/sh:")
+        walk("usr/bin/sh")
+
+        return report.toString()
+    }
+
     fun buildCommand(): List<String> {
         val prootBinary = File(nativeLibDir, "libproot.so")
         return listOf(
