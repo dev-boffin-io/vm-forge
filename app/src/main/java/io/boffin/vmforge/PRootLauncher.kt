@@ -100,7 +100,6 @@ class PRootLauncher(private val context: Context) {
         val prootBinary = File(nativeLibDir, "libproot.so")
         return listOf(
             prootBinary.absolutePath,
-            "--link2symlink",
             "-0", // appear as root inside the rootfs (fakeroot-style, no real privilege)
             "-r", rootfsDir.absolutePath,
             "-b", "/dev",
