@@ -106,7 +106,7 @@ class PRootLauncher(private val context: Context) {
             "-b", "/proc",
             "-b", "/sys",
             "-w", "/root",
-            "/bin/dash" // temporarily bypassing /bin/sh's sh->dash symlink to isolate the issue — see PRootLauncher history
+            "/usr/bin/dash" // bypassing the /bin directory-symlink entirely — see PRootLauncher history
         )
     }
 
