@@ -101,6 +101,8 @@ class PRootLauncher(private val context: Context) {
         return listOf(
             prootBinary.absolutePath,
             "-0", // appear as root inside the rootfs (fakeroot-style, no real privilege)
+            "-v", "9", // max verbosity — diagnosing why even a plain real file with zero
+                       // symlinks still gets "No such file or directory"; see history
             "-r", rootfsDir.absolutePath,
             "-b", "/dev",
             "-b", "/proc",
