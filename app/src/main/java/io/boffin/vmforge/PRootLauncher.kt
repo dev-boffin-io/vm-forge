@@ -138,6 +138,12 @@ class PRootLauncher(private val context: Context) {
                 // own writable directory instead.
                 environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
                 environment()["TMPDIR"] = tmpDir.absolutePath
+                // Verbose trace showed proot enabling its seccomp-based
+                // ptrace acceleration right before execve() translation
+                // stopped taking effect — a known class of device/kernel-
+                // specific compatibility issue with that optimization.
+                // Force classic ptrace-only mode instead.
+                environment()["PROOT_NO_SECCOMP"] = "1"
             }
             .start()
     }
