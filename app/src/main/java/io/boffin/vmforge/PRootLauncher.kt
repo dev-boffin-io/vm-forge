@@ -92,6 +92,13 @@ class PRootLauncher(private val context: Context) {
         walk("bin/sh")
         report.appendLine("Resolving /usr/bin/sh:")
         walk("usr/bin/sh")
+        // dash (what sh resolves to) is a dynamically-linked ELF — the
+        // kernel's own ELF loader needs this interpreter to exist at
+        // exactly this path during execve(), or it fails with ENOENT
+        // (which proot then reports as if the *original* program is
+        // missing, not the interpreter). Never checked before.
+        report.appendLine("Resolving /lib/ld-linux-aarch64.so.1 (dash's ELF interpreter):")
+        walk("lib/ld-linux-aarch64.so.1")
 
         return report.toString()
     }
