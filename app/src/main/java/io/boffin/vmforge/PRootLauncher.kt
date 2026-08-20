@@ -17,14 +17,23 @@ import java.io.File
  */
 class PRootLauncher(private val context: Context) {
 
+    // proot's own path canonicalization resolves whatever we pass as -r to
+    // a /data/data/... path (confirmed via its "binding = ..." verbose log),
+    // even when context.filesDir reports /data/user/0/... instead. These
+    // are normally the same directory via a standard Android alias, but to
+    // eliminate any chance of that alias being inconsistent on this device,
+    // use the same explicit /data/data path ourselves everywhere.
+    private val dataDir: File
+        get() = File("/data/data/${context.packageName}/files")
+
     private val nativeLibDir: File
         get() = File(context.applicationInfo.nativeLibraryDir)
 
     private val rootfsDir: File
-        get() = File(context.filesDir, "proot-rootfs")
+        get() = File(dataDir, "proot-rootfs")
 
     private val tmpDir: File
-        get() = File(context.filesDir, "proot-tmp").apply { mkdirs() }
+        get() = File(dataDir, "proot-tmp").apply { mkdirs() }
 
     fun rootfsExists(): Boolean = rootfsDir.exists() && (rootfsDir.listFiles()?.isNotEmpty() == true)
 
@@ -108,14 +117,12 @@ class PRootLauncher(private val context: Context) {
         return listOf(
             prootBinary.absolutePath,
             "-0", // appear as root inside the rootfs (fakeroot-style, no real privilege)
-            "-v", "9", // max verbosity — diagnosing why even a plain real file with zero
-                       // symlinks still gets "No such file or directory"; see history
             "-r", rootfsDir.absolutePath,
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
             "-w", "/root",
-            "/usr/bin/dash" // bypassing the /bin directory-symlink entirely — see PRootLauncher history
+            "/bin/sh"
         )
     }
 

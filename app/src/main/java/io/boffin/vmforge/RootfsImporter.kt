@@ -53,7 +53,13 @@ object RootfsImporter {
 
     fun extract(context: Context, uri: Uri, onDone: (Boolean, String) -> Unit) {
         Thread {
-            val destDir = File(context.filesDir, "proot-rootfs")
+            // Explicit /data/data path, matching PRootLauncher — proot's own
+            // path canonicalization resolves -r to /data/data/... regardless
+            // of what we pass, so extraction must write there too or the
+            // rootfs proot actually reads from could be empty/stale on a
+            // device where /data/user/0 <-> /data/data isn't a transparent
+            // alias.
+            val destDir = File("/data/data/${context.packageName}/files/proot-rootfs")
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
             val tarCmd = resolveTarCommand(context)
 
