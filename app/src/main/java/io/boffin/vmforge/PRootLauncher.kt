@@ -126,6 +126,38 @@ class PRootLauncher(private val context: Context) {
         )
     }
 
+    /**
+     * Clean, proot-independent test for whether this device blocks
+     * executing files from the app's own private data directory (the same
+     * SELinux restriction that forced proot/busybox/qemu themselves into
+     * nativeLibraryDir/jniLibs, per this project's own git history) —
+     * copies a known-good nativeLibraryDir binary into filesDir and tries
+     * to exec it directly via plain ProcessBuilder, no ptrace/proot
+     * involved, so any permission denial shows up as a normal catchable
+     * exception instead of proot's ambiguous "No such file" wrapping.
+     */
+    fun testExecFromFilesDir(): String {
+        val source = File(nativeLibDir, "libproot.so")
+        val dest = File(dataDir, "exec-test-copy")
+        return try {
+            source.copyTo(dest, overwrite = true)
+            dest.setExecutable(true)
+            val process = ProcessBuilder(dest.absolutePath, "--help")
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            "Copied ${source.name} to ${dest.absolutePath} and executed it directly (no proot).\n" +
+                "exit=$exitCode\n${output.take(500)}"
+        } catch (e: Exception) {
+            "Copied to ${dest.absolutePath} but exec FAILED: ${e.javaClass.simpleName}: ${e.message}\n" +
+                "This would confirm files under filesDir/dataDir can't be executed on this device " +
+                "(the same restriction that forced proot/busybox/qemu into nativeLibraryDir)."
+        } finally {
+            dest.delete()
+        }
+    }
+
     fun start(): Process {
         val cmd = buildCommand()
         return ProcessBuilder(cmd)

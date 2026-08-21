@@ -170,6 +170,13 @@
         android:text="Verify Rootfs Contents" />
 
     <Button
+        android:id="@+id/testExecButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Test Exec From filesDir (no proot)" />
+
+    <Button
         android:id="@+id/startProotButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
