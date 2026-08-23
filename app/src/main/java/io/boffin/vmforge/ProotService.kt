@@ -11,11 +11,14 @@ import android.os.IBinder
 import android.widget.Toast
 
 /**
- * Runs the bundled PRoot as a foreground service — separate from VmService
- * since a PRoot container and a QEMU VM are independent, unrelated modes
- * (not meant to run at the same time in this app, though nothing
- * technically stops that). Bindable, so TerminalActivity can attach to
- * its stdio the same way it does for VmService.
+ * Runs PRoot as a foreground service — separate from VmService since a
+ * PRoot container and a QEMU VM are independent, unrelated modes (not
+ * meant to run at the same time in this app, though nothing technically
+ * stops that). Bindable, so TerminalActivity can attach to its stdio the
+ * same way it does for VmService.
+ *
+ * prootProcess is a Shizuku remote process (shell UID), not a plain
+ * java.lang.Process — see PRootLauncher's class doc for why.
  */
 class ProotService : Service() {
 
@@ -24,7 +27,7 @@ class ProotService : Service() {
     }
     private val binder = LocalBinder()
 
-    var prootProcess: Process? = null
+    var prootProcess: rikka.shizuku.ShizukuRemoteProcess? = null
         private set
 
     private val channelId = "vm_forge_proot_running"
@@ -48,6 +51,15 @@ class ProotService : Service() {
         startForeground(2, notification)
 
         if (prootProcess == null || prootProcess?.isAlive != true) {
+            if (!ShizukuHelper.hasPermission()) {
+                Toast.makeText(
+                    this,
+                    "Shizuku permission required for PRoot on this device — grant it in the Shizuku app",
+                    Toast.LENGTH_LONG
+                ).show()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             val launcher = PRootLauncher(this)
             if (!launcher.rootfsExists()) {
                 Toast.makeText(this, "No rootfs imported yet — use \"Import PRoot rootfs\" first", Toast.LENGTH_LONG).show()

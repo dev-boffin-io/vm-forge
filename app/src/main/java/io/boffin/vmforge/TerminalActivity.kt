@@ -54,8 +54,23 @@ class TerminalActivity : AppCompatActivity() {
     // Holds a possibly-incomplete escape sequence split across two read() calls
     private val pending = StringBuilder()
 
-    private fun currentProcess(): Process? =
-        if (target == TARGET_PROOT) prootService?.prootProcess else vmService?.qemuProcess
+    /** Minimal common surface over java.lang.Process (VM) and Shizuku's remote process (PRoot). */
+    private interface StreamableProcess {
+        val inputStream: java.io.InputStream
+        val outputStream: OutputStream
+    }
+    private class RealProcessAdapter(val p: Process) : StreamableProcess {
+        override val inputStream get() = p.inputStream
+        override val outputStream get() = p.outputStream
+    }
+    private class ShizukuProcessAdapter(val p: rikka.shizuku.ShizukuRemoteProcess) : StreamableProcess {
+        override val inputStream get() = p.inputStream
+        override val outputStream get() = p.outputStream
+    }
+
+    private fun currentProcess(): StreamableProcess? =
+        if (target == TARGET_PROOT) prootService?.prootProcess?.let { ShizukuProcessAdapter(it) }
+        else vmService?.qemuProcess?.let { RealProcessAdapter(it) }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

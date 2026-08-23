@@ -10,38 +10,31 @@ import java.io.File
  * much lighter/faster than QEMU, but same-architecture only (ARM64) and
  * less isolated (host /proc, /dev etc. are bind-mounted in).
  *
- * The rootfs is a plain extracted tarball (e.g. a Debian arm64 base
- * rootfs from proot-distro or debootstrap) under filesDir/proot-rootfs/,
- * NOT a bootable disk image — there's no kernel/init/systemd involved,
- * PRoot just directly execs a shell inside the rootfs directory.
+ * Both the rootfs (see RootfsImporter) and proot itself now run via
+ * Shizuku (shell UID), at /data/local/tmp — this device denies exec() of
+ * any file under the app's own private data directory
+ * (testExecFromFilesDir confirms: error=13/EACCES), the same restriction
+ * that originally forced proot/busybox/qemu into nativeLibraryDir/jniLibs
+ * at build time. A runtime-imported rootfs can't be pre-bundled that way,
+ * so it has to live somewhere shell UID can both read *and execute* from
+ * — /data/local/tmp is the standard such location. See RootfsImporter's
+ * class doc for the fuller history of how this was diagnosed.
  */
 class PRootLauncher(private val context: Context) {
-
-    // proot's own path canonicalization resolves whatever we pass as -r to
-    // a /data/data/... path (confirmed via its "binding = ..." verbose log),
-    // even when context.filesDir reports /data/user/0/... instead. These
-    // are normally the same directory via a standard Android alias, but to
-    // eliminate any chance of that alias being inconsistent on this device,
-    // use the same explicit /data/data path ourselves everywhere.
-    private val dataDir: File
-        get() = File("/data/data/${context.packageName}/files")
 
     private val nativeLibDir: File
         get() = File(context.applicationInfo.nativeLibraryDir)
 
     private val rootfsDir: File
-        get() = File(dataDir, "proot-rootfs")
+        get() = File(RootfsImporter.ROOTFS_DIR)
 
-    private val tmpDir: File
-        get() = File(dataDir, "proot-tmp").apply { mkdirs() }
+    private val tmpDir = "/data/local/tmp/vmforge-proot-tmp"
 
     fun rootfsExists(): Boolean = rootfsDir.exists() && (rootfsDir.listFiles()?.isNotEmpty() == true)
 
     /**
      * Beyond "is the folder non-empty" (rootfsExists), confirms a shell
-     * binary is actually reachable — catches the half-extracted-rootfs case
-     * that used to surface only as proot's native "execve(...) No such file"
-     * error deep in the log.
+     * binary is actually reachable — catches a half-extracted-rootfs case.
      */
     fun rootfsHasShell(): Boolean {
         fun resolves(path: String, depth: Int = 0): Boolean {
@@ -57,11 +50,9 @@ class PRootLauncher(private val context: Context) {
     }
 
     /**
-     * Detailed version of [rootfsHasShell] for when it (or a live proot
-     * session) says the shell is missing but extraction reported success —
-     * walks the same symlink chain and reports exactly where it breaks,
-     * plus what's actually at the top level of the rootfs, instead of
-     * just true/false.
+     * Detailed version of [rootfsHasShell] — walks the same symlink chain
+     * and reports exactly where it breaks, plus what's at the top level of
+     * the rootfs, instead of just true/false.
      */
     fun verifyRootfs(): String {
         val report = StringBuilder()
@@ -101,11 +92,6 @@ class PRootLauncher(private val context: Context) {
         walk("bin/sh")
         report.appendLine("Resolving /usr/bin/sh:")
         walk("usr/bin/sh")
-        // dash (what sh resolves to) is a dynamically-linked ELF — the
-        // kernel's own ELF loader needs this interpreter to exist at
-        // exactly this path during execve(), or it fails with ENOENT
-        // (which proot then reports as if the *original* program is
-        // missing, not the interpreter). Never checked before.
         report.appendLine("Resolving /lib/ld-linux-aarch64.so.1 (dash's ELF interpreter):")
         walk("lib/ld-linux-aarch64.so.1")
 
@@ -128,17 +114,17 @@ class PRootLauncher(private val context: Context) {
 
     /**
      * Clean, proot-independent test for whether this device blocks
-     * executing files from the app's own private data directory (the same
-     * SELinux restriction that forced proot/busybox/qemu themselves into
-     * nativeLibraryDir/jniLibs, per this project's own git history) —
-     * copies a known-good nativeLibraryDir binary into filesDir and tries
+     * executing files from the app's own private data directory. Copies a
+     * known-good nativeLibraryDir binary into the app's filesDir and tries
      * to exec it directly via plain ProcessBuilder, no ptrace/proot
-     * involved, so any permission denial shows up as a normal catchable
+     * involved, so a permission denial shows up as a normal catchable
      * exception instead of proot's ambiguous "No such file" wrapping.
+     * (This is what originally confirmed the restriction — kept as a
+     * standing diagnostic in case it's ever useful on a different device.)
      */
     fun testExecFromFilesDir(): String {
         val source = File(nativeLibDir, "libproot.so")
-        val dest = File(dataDir, "exec-test-copy")
+        val dest = File(context.filesDir, "exec-test-copy")
         return try {
             source.copyTo(dest, overwrite = true)
             dest.setExecutable(true)
@@ -150,33 +136,36 @@ class PRootLauncher(private val context: Context) {
             "Copied ${source.name} to ${dest.absolutePath} and executed it directly (no proot).\n" +
                 "exit=$exitCode\n${output.take(500)}"
         } catch (e: Exception) {
-            "Copied to ${dest.absolutePath} but exec FAILED: ${e.javaClass.simpleName}: ${e.message}\n" +
-                "This would confirm files under filesDir/dataDir can't be executed on this device " +
-                "(the same restriction that forced proot/busybox/qemu into nativeLibraryDir)."
+            "Copied to ${dest.absolutePath} but exec FAILED: ${e.javaClass.simpleName}: ${e.message}"
         } finally {
             dest.delete()
         }
     }
 
-    fun start(): Process {
+    /**
+     * Starts proot via Shizuku (shell UID) — running it as this app's own
+     * process (like before) hits the same exec-from-app-data restriction
+     * RootfsImporter's class doc describes, even though libproot.so itself
+     * lives in nativeLibraryDir (that part was always fine); the problem
+     * is everything proot then tries to *execute inside the rootfs*.
+     * Running proot itself under shell UID sidesteps this for the whole
+     * session at once, rather than needing a workaround per rootfs binary.
+     */
+    fun start(): rikka.shizuku.ShizukuRemoteProcess {
+        File(tmpDir).apply { if (!exists()) mkdirs() }
+        // Note: this mkdir happens via our own (app) UID — /data/local/tmp
+        // is world-writable so this works fine even though proot itself
+        // will run as shell UID afterward.
         val cmd = buildCommand()
-        return ProcessBuilder(cmd)
-            .redirectErrorStream(true)
-            .apply {
-                environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath
-                // PRoot was compiled with Termux's own tmp path baked in as a
-                // default (/data/data/com.termux/files/usr/tmp/), which our app
-                // can't access (different UID, private dir) — point it at our
-                // own writable directory instead.
-                environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
-                environment()["TMPDIR"] = tmpDir.absolutePath
-                // Verbose trace showed proot enabling its seccomp-based
-                // ptrace acceleration right before execve() translation
-                // stopped taking effect — a known class of device/kernel-
-                // specific compatibility issue with that optimization.
-                // Force classic ptrace-only mode instead.
-                environment()["PROOT_NO_SECCOMP"] = "1"
-            }
-            .start()
+        val env = arrayOf(
+            "LD_LIBRARY_PATH=${nativeLibDir.absolutePath}",
+            "PROOT_TMP_DIR=$tmpDir",
+            "TMPDIR=$tmpDir",
+            // Verbose trace showed proot's seccomp-based ptrace acceleration
+            // enabling right before execve() translation stopped taking
+            // effect on this device — force classic ptrace-only mode.
+            "PROOT_NO_SECCOMP=1"
+        )
+        return ShizukuHelper.newProcess(cmd, env, null)
     }
 }
