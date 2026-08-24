@@ -17,8 +17,8 @@ import android.widget.Toast
  * stops that). Bindable, so TerminalActivity can attach to its stdio the
  * same way it does for VmService.
  *
- * prootProcess is a Shizuku remote process (shell UID), not a plain
- * java.lang.Process — see PRootLauncher's class doc for why.
+ * prootSession wraps a Shizuku shell-UID process (see PRootLauncher's
+ * class doc for why), not a plain java.lang.Process.
  */
 class ProotService : Service() {
 
@@ -27,7 +27,7 @@ class ProotService : Service() {
     }
     private val binder = LocalBinder()
 
-    var prootProcess: rikka.shizuku.ShizukuRemoteProcess? = null
+    var prootSession: ShizukuProotSession? = null
         private set
 
     private val channelId = "vm_forge_proot_running"
@@ -50,7 +50,7 @@ class ProotService : Service() {
             .build()
         startForeground(2, notification)
 
-        if (prootProcess == null || prootProcess?.isAlive != true) {
+        if (prootSession == null || prootSession?.isAlive != true) {
             if (!ShizukuHelper.hasPermission()) {
                 Toast.makeText(
                     this,
@@ -71,24 +71,28 @@ class ProotService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            try {
-                prootProcess = launcher.start()
-            } catch (e: Exception) {
-                Toast.makeText(this, "PRoot failed to start: ${e.message}", Toast.LENGTH_LONG).show()
-                stopSelf()
-            }
+            // bindShellService() blocks waiting for the Shizuku connection
+            // — must not run on the main thread.
+            Thread {
+                try {
+                    prootSession = launcher.start(this)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "PRoot failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+                    stopSelf()
+                }
+            }.start()
         }
 
         return START_STICKY
     }
 
-    fun isRunning(): Boolean = prootProcess?.isAlive == true
+    fun isRunning(): Boolean = prootSession?.isAlive == true
 
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
-        prootProcess?.destroy()
-        prootProcess = null
+        prootSession?.destroy()
+        prootSession = null
         super.onDestroy()
     }
 }

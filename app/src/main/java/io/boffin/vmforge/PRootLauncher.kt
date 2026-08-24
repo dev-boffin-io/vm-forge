@@ -151,7 +151,7 @@ class PRootLauncher(private val context: Context) {
      * Running proot itself under shell UID sidesteps this for the whole
      * session at once, rather than needing a workaround per rootfs binary.
      */
-    fun start(): rikka.shizuku.ShizukuRemoteProcess {
+    fun start(context: Context): ShizukuProotSession {
         File(tmpDir).apply { if (!exists()) mkdirs() }
         // Note: this mkdir happens via our own (app) UID — /data/local/tmp
         // is world-writable so this works fine even though proot itself
@@ -166,6 +166,35 @@ class PRootLauncher(private val context: Context) {
             // effect on this device — force classic ptrace-only mode.
             "PROOT_NO_SECCOMP=1"
         )
-        return ShizukuHelper.newProcess(cmd, env, null)
+        val service = ShizukuHelper.bindShellService(context)
+        val pfds = service.startProcess(cmd.toTypedArray(), env)
+        return ShizukuProotSession(
+            context = context,
+            service = service,
+            stdin = android.os.ParcelFileDescriptor.AutoCloseOutputStream(pfds[0]),
+            stdout = android.os.ParcelFileDescriptor.AutoCloseInputStream(pfds[1])
+        )
+    }
+}
+
+/**
+ * Live handle to a proot session running inside [ShellUserService] (shell
+ * UID, via Shizuku). [stdin]/[stdout] are genuine pipe streams wrapping
+ * the child process's own file descriptors, transferred across the Binder
+ * boundary as ParcelFileDescriptors — real streaming I/O, no polling.
+ */
+class ShizukuProotSession(
+    private val context: Context,
+    private val service: IShellService,
+    val stdin: java.io.OutputStream,
+    val stdout: java.io.InputStream
+) {
+    val isAlive: Boolean get() = try { service.isProcessAlive() } catch (_: Exception) { false }
+
+    fun destroy() {
+        try { service.destroyProcess() } catch (_: Exception) { /* already gone */ }
+        try { stdin.close() } catch (_: Exception) {}
+        try { stdout.close() } catch (_: Exception) {}
+        ShizukuHelper.unbindShellService(context)
     }
 }

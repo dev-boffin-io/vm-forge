@@ -61,16 +61,15 @@ object RootfsImporter {
                     return@Thread
                 }
 
-                // Shell UID does the real, unmodified extraction — no
-                // seccomp restrictions on mknod/link/setxattr here, and no
-                // exec-from-app-data restriction either since the result
-                // stays at /data/local/tmp.
-                val (exitCode, output) = ShizukuHelper.runShell(
-                    listOf(
-                        "sh", "-c",
-                        "rm -rf '$ROOTFS_DIR' && mkdir -p '$ROOTFS_DIR' && " +
-                            "tar -xzf '${stagingFile.absolutePath}' -C '$ROOTFS_DIR'"
-                    )
+                // Shell UID (via our bound UserService) does the real,
+                // unmodified extraction — no seccomp restrictions on
+                // mknod/link/setxattr here, and no exec-from-app-data
+                // restriction either since the result stays at
+                // /data/local/tmp.
+                val (exitCode, output) = ShizukuHelper.runShellOnce(
+                    context,
+                    "rm -rf '$ROOTFS_DIR' && mkdir -p '$ROOTFS_DIR' && " +
+                        "tar -xzf '${stagingFile.absolutePath}' -C '$ROOTFS_DIR'"
                 )
 
                 if (exitCode != 0) {
