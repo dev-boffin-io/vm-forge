@@ -39,6 +39,16 @@ android {
         jvmTarget = "17"
     }
 
+    // Both off by default in modern AGP:
+    // - aidl: needed to compile IShellService.aidl into the IShellService
+    //   interface Shizuku's UserService binding uses
+    // - buildConfig: needed for BuildConfig.DEBUG, used when configuring
+    //   the Shizuku UserService's debuggable() flag
+    buildFeatures {
+        aidl = true
+        buildConfig = true
+    }
+
     // qemu-system-aarch64 must exist as an actual extracted file on disk
     // to be exec'd via ProcessBuilder — AGP's default (uncompressed,
     // mmap'd directly from inside the APK) doesn't leave a real file at
