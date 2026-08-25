@@ -16,7 +16,7 @@ interface IShellService {
     // Runs `sh -c script` as shell UID, waits for it to finish, and
     // returns "<exitCode>\n<combined stdout+stderr>". For one-shot
     // commands (rootfs extraction) where we don't need live streaming.
-    String runShell(in String script);
+    String runShell(in String script) = 1;
 
     // Starts cmd/env as a long-running child process of this (shell UID)
     // service and returns [stdinWriteEnd, stdoutReadEnd] as real pipe
@@ -24,9 +24,9 @@ interface IShellService {
     // AutoCloseOutputStream / AutoCloseInputStream on the caller side for
     // genuine streaming I/O, no polling. Only one such process is tracked
     // at a time; starting a new one replaces the previous reference.
-    ParcelFileDescriptor[] startProcess(in String[] cmd, in String[] env);
+    ParcelFileDescriptor[] startProcess(in String[] cmd, in String[] env) = 2;
 
-    boolean isProcessAlive();
-    int waitForProcess();
-    void destroyProcess();
+    boolean isProcessAlive() = 3;
+    int waitForProcess() = 4;
+    void destroyProcess() = 5;
 }
