@@ -10,15 +10,12 @@ import java.io.File
  * much lighter/faster than QEMU, but same-architecture only (ARM64) and
  * less isolated (host /proc, /dev etc. are bind-mounted in).
  *
- * Both the rootfs (see RootfsImporter) and proot itself now run via
- * Shizuku (shell UID), at /data/local/tmp — this device denies exec() of
- * any file under the app's own private data directory
- * (testExecFromFilesDir confirms: error=13/EACCES), the same restriction
- * that originally forced proot/busybox/qemu into nativeLibraryDir/jniLibs
- * at build time. A runtime-imported rootfs can't be pre-bundled that way,
- * so it has to live somewhere shell UID can both read *and execute* from
- * — /data/local/tmp is the standard such location. See RootfsImporter's
- * class doc for the fuller history of how this was diagnosed.
+ * The rootfs lives at RootfsImporter.rootfsDir() — a sibling of filesDir,
+ * not inside it. See RootfsImporter's class doc for why: this device
+ * denies exec() specifically for files under the "files" subdirectory of
+ * the app's private data, and a differently-named sibling directory
+ * (matching a known-working reference app's pattern) avoids that
+ * entirely, no root/Shizuku needed.
  */
 class PRootLauncher(private val context: Context) {
 
@@ -26,9 +23,10 @@ class PRootLauncher(private val context: Context) {
         get() = File(context.applicationInfo.nativeLibraryDir)
 
     private val rootfsDir: File
-        get() = File(RootfsImporter.ROOTFS_DIR)
+        get() = RootfsImporter.rootfsDir(context)
 
-    private val tmpDir = "/data/local/tmp/vmforge-proot-tmp"
+    private val tmpDir: File
+        get() = File(File(context.filesDir.parentFile, "local"), "proot-tmp").apply { mkdirs() }
 
     fun rootfsExists(): Boolean = rootfsDir.exists() && (rootfsDir.listFiles()?.isNotEmpty() == true)
 
@@ -114,18 +112,18 @@ class PRootLauncher(private val context: Context) {
 
     /**
      * Clean, proot-independent test for whether this device blocks
-     * executing files from the app's own private data directory. Copies a
-     * known-good nativeLibraryDir binary into the app's filesDir and tries
-     * to exec it directly via plain ProcessBuilder, no ptrace/proot
-     * involved, so a permission denial shows up as a normal catchable
-     * exception instead of proot's ambiguous "No such file" wrapping.
-     * (This is what originally confirmed the restriction — kept as a
-     * standing diagnostic in case it's ever useful on a different device.)
+     * executing files from a given directory. Copies a known-good
+     * nativeLibraryDir binary there and tries to exec it directly via
+     * plain ProcessBuilder, no ptrace/proot involved, so a permission
+     * denial shows up as a normal catchable exception. Kept as a standing
+     * diagnostic — this is what confirmed files/ specifically (not the
+     * whole private data dir) is exec-denied on this device.
      */
-    fun testExecFromFilesDir(): String {
+    fun testExecFrom(dir: File): String {
         val source = File(nativeLibDir, "libproot.so")
-        val dest = File(context.filesDir, "exec-test-copy")
+        val dest = File(dir, "exec-test-copy")
         return try {
+            dir.mkdirs()
             source.copyTo(dest, overwrite = true)
             dest.setExecutable(true)
             val process = ProcessBuilder(dest.absolutePath, "--help")
@@ -133,7 +131,7 @@ class PRootLauncher(private val context: Context) {
                 .start()
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
-            "Copied ${source.name} to ${dest.absolutePath} and executed it directly (no proot).\n" +
+            "Copied ${source.name} to ${dest.absolutePath} and executed it directly.\n" +
                 "exit=$exitCode\n${output.take(500)}"
         } catch (e: Exception) {
             "Copied to ${dest.absolutePath} but exec FAILED: ${e.javaClass.simpleName}: ${e.message}"
@@ -142,59 +140,16 @@ class PRootLauncher(private val context: Context) {
         }
     }
 
-    /**
-     * Starts proot via Shizuku (shell UID) — running it as this app's own
-     * process (like before) hits the same exec-from-app-data restriction
-     * RootfsImporter's class doc describes, even though libproot.so itself
-     * lives in nativeLibraryDir (that part was always fine); the problem
-     * is everything proot then tries to *execute inside the rootfs*.
-     * Running proot itself under shell UID sidesteps this for the whole
-     * session at once, rather than needing a workaround per rootfs binary.
-     */
-    fun start(context: Context): ShizukuProotSession {
-        File(tmpDir).apply { if (!exists()) mkdirs() }
-        // Note: this mkdir happens via our own (app) UID — /data/local/tmp
-        // is world-writable so this works fine even though proot itself
-        // will run as shell UID afterward.
+    /** Starts proot as this app's own process — normal ProcessBuilder, no Shizuku needed. */
+    fun start(): Process {
         val cmd = buildCommand()
-        val env = arrayOf(
-            "LD_LIBRARY_PATH=${nativeLibDir.absolutePath}",
-            "PROOT_TMP_DIR=$tmpDir",
-            "TMPDIR=$tmpDir",
-            // Verbose trace showed proot's seccomp-based ptrace acceleration
-            // enabling right before execve() translation stopped taking
-            // effect on this device — force classic ptrace-only mode.
-            "PROOT_NO_SECCOMP=1"
-        )
-        val service = ShizukuHelper.bindShellService(context)
-        val pfds = service.startProcess(cmd.toTypedArray(), env)
-        return ShizukuProotSession(
-            context = context,
-            service = service,
-            stdin = android.os.ParcelFileDescriptor.AutoCloseOutputStream(pfds[0]),
-            stdout = android.os.ParcelFileDescriptor.AutoCloseInputStream(pfds[1])
-        )
-    }
-}
-
-/**
- * Live handle to a proot session running inside [ShellUserService] (shell
- * UID, via Shizuku). [stdin]/[stdout] are genuine pipe streams wrapping
- * the child process's own file descriptors, transferred across the Binder
- * boundary as ParcelFileDescriptors — real streaming I/O, no polling.
- */
-class ShizukuProotSession(
-    private val context: Context,
-    private val service: IShellService,
-    val stdin: java.io.OutputStream,
-    val stdout: java.io.InputStream
-) {
-    val isAlive: Boolean get() = try { service.isProcessAlive() } catch (_: Exception) { false }
-
-    fun destroy() {
-        try { service.destroyProcess() } catch (_: Exception) { /* already gone */ }
-        try { stdin.close() } catch (_: Exception) {}
-        try { stdout.close() } catch (_: Exception) {}
-        ShizukuHelper.unbindShellService(context)
+        return ProcessBuilder(cmd)
+            .redirectErrorStream(true)
+            .apply {
+                environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath
+                environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                environment()["TMPDIR"] = tmpDir.absolutePath
+            }
+            .start()
     }
 }

@@ -16,9 +16,6 @@ import android.widget.Toast
  * meant to run at the same time in this app, though nothing technically
  * stops that). Bindable, so TerminalActivity can attach to its stdio the
  * same way it does for VmService.
- *
- * prootSession wraps a Shizuku shell-UID process (see PRootLauncher's
- * class doc for why), not a plain java.lang.Process.
  */
 class ProotService : Service() {
 
@@ -27,7 +24,7 @@ class ProotService : Service() {
     }
     private val binder = LocalBinder()
 
-    var prootSession: ShizukuProotSession? = null
+    var prootProcess: Process? = null
         private set
 
     private val channelId = "vm_forge_proot_running"
@@ -50,16 +47,7 @@ class ProotService : Service() {
             .build()
         startForeground(2, notification)
 
-        if (prootSession == null || prootSession?.isAlive != true) {
-            if (!ShizukuHelper.hasPermission()) {
-                Toast.makeText(
-                    this,
-                    "Shizuku permission required for PRoot on this device — grant it in the Shizuku app",
-                    Toast.LENGTH_LONG
-                ).show()
-                stopSelf()
-                return START_NOT_STICKY
-            }
+        if (prootProcess == null || prootProcess?.isAlive != true) {
             val launcher = PRootLauncher(this)
             if (!launcher.rootfsExists()) {
                 Toast.makeText(this, "No rootfs imported yet — use \"Import PRoot rootfs\" first", Toast.LENGTH_LONG).show()
@@ -71,28 +59,24 @@ class ProotService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            // bindShellService() blocks waiting for the Shizuku connection
-            // — must not run on the main thread.
-            Thread {
-                try {
-                    prootSession = launcher.start(this)
-                } catch (e: Exception) {
-                    Toast.makeText(this, "PRoot failed to start: ${e.message}", Toast.LENGTH_LONG).show()
-                    stopSelf()
-                }
-            }.start()
+            try {
+                prootProcess = launcher.start()
+            } catch (e: Exception) {
+                Toast.makeText(this, "PRoot failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+                stopSelf()
+            }
         }
 
         return START_STICKY
     }
 
-    fun isRunning(): Boolean = prootSession?.isAlive == true
+    fun isRunning(): Boolean = prootProcess?.isAlive == true
 
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
-        prootSession?.destroy()
-        prootSession = null
+        prootProcess?.destroy()
+        prootProcess = null
         super.onDestroy()
     }
 }

@@ -39,16 +39,6 @@ android {
         jvmTarget = "17"
     }
 
-    // Both off by default in modern AGP:
-    // - aidl: needed to compile IShellService.aidl into the IShellService
-    //   interface Shizuku's UserService binding uses
-    // - buildConfig: needed for BuildConfig.DEBUG, used when configuring
-    //   the Shizuku UserService's debuggable() flag
-    buildFeatures {
-        aidl = true
-        buildConfig = true
-    }
-
     // qemu-system-aarch64 must exist as an actual extracted file on disk
     // to be exec'd via ProcessBuilder — AGP's default (uncompressed,
     // mmap'd directly from inside the APK) doesn't leave a real file at
@@ -76,13 +66,4 @@ dependencies {
     // `tar` for actual extraction — see RootfsImporter for why.
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("org.tukaani:xz:1.9") // commons-compress needs this for some compression formats
-    // Shizuku: runs rootfs extraction AND proot itself as shell UID via
-    // ADB-level privilege. This device denies exec() of any file under the
-    // app's own private data directory (confirmed via
-    // PRootLauncher.testExecFromFilesDir — error=13 Permission denied),
-    // the same restriction that forced proot/busybox/qemu themselves into
-    // nativeLibraryDir/jniLibs. Shell UID isn't subject to that
-    // restriction for files under /data/local/tmp.
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

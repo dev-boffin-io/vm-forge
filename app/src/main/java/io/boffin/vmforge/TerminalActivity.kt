@@ -54,23 +54,8 @@ class TerminalActivity : AppCompatActivity() {
     // Holds a possibly-incomplete escape sequence split across two read() calls
     private val pending = StringBuilder()
 
-    /** Minimal common surface over java.lang.Process (VM) and the Shizuku-backed proot session. */
-    private interface StreamableProcess {
-        val inputStream: java.io.InputStream
-        val outputStream: OutputStream
-    }
-    private class RealProcessAdapter(val p: Process) : StreamableProcess {
-        override val inputStream get() = p.inputStream
-        override val outputStream get() = p.outputStream
-    }
-    private class ShizukuProcessAdapter(val s: ShizukuProotSession) : StreamableProcess {
-        override val inputStream get() = s.stdout
-        override val outputStream get() = s.stdin
-    }
-
-    private fun currentProcess(): StreamableProcess? =
-        if (target == TARGET_PROOT) prootService?.prootSession?.let { ShizukuProcessAdapter(it) }
-        else vmService?.qemuProcess?.let { RealProcessAdapter(it) }
+    private fun currentProcess(): Process? =
+        if (target == TARGET_PROOT) prootService?.prootProcess else vmService?.qemuProcess
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -127,8 +112,7 @@ class TerminalActivity : AppCompatActivity() {
     private fun startReadingOutput() {
         keepReading = true
         readerThread = Thread {
-            // prootSession is set asynchronously (Shizuku bind blocks) —
-            // wait briefly for it if we got here before it's ready.
+            // The process may not have finished starting yet — wait briefly.
             var stream = currentProcess()?.inputStream
             var waited = 0
             while (stream == null && waited < 10_000 && keepReading) {

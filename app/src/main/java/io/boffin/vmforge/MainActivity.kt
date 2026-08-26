@@ -36,23 +36,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Ask for Shizuku permission once at startup if it's running — PRoot
-        // can't work at all on this device without it (see PRootLauncher/
-        // RootfsImporter class docs). Safe to call even if the Shizuku app
-        // isn't installed (isAvailable() guards it).
-        rikka.shizuku.Shizuku.addRequestPermissionResultListener { _, grantResult ->
-            val granted = grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED
-            Toast.makeText(
-                this,
-                if (granted) "Shizuku permission granted — PRoot is ready to use"
-                else "Shizuku permission denied — PRoot Container won't work without it",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-        if (ShizukuHelper.isAvailable() && !ShizukuHelper.hasPermission()) {
-            ShizukuHelper.requestPermission()
-        }
-
         // If a previous SyscallDiagnostic.runDiagnostic() run force-closed
         // the app, this reports exactly which step it died on.
         SyscallDiagnostic.readAndClearCrashedStep(this)?.let { crashedStep ->
@@ -191,7 +174,8 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.testExecButton).setOnClickListener {
             Thread {
-                val result = PRootLauncher(this).testExecFromFilesDir()
+                val dir = File(File(filesDir.parentFile, "local"), "exec-test")
+                val result = PRootLauncher(this).testExecFrom(dir)
                 runOnUiThread { showFullTextDialog("Exec test result", result) }
             }.start()
         }
