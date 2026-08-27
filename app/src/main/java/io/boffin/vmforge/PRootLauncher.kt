@@ -98,16 +98,40 @@ class PRootLauncher(private val context: Context) {
 
     fun buildCommand(): List<String> {
         val prootBinary = File(nativeLibDir, "libproot.so")
-        return listOf(
+        val args = mutableListOf(
             prootBinary.absolutePath,
-            "-0", // appear as root inside the rootfs (fakeroot-style, no real privilege)
-            "-r", rootfsDir.absolutePath,
+            "--kill-on-exit",
+            "-w", "/"
+        )
+        // Bind host system/linker-namespace paths in, same as ReTerminal's
+        // proven-working invocation — earlier attempts without these still
+        // failed identically even with a byte-for-byte verified rootfs, so
+        // something about proot's own operation apparently depends on
+        // these being visible, not just the target binary's own existence.
+        listOf(
+            "/apex", "/odm", "/product", "/system", "/system_ext", "/vendor",
+            "/linkerconfig/ld.config.txt",
+            "/linkerconfig/com.android.art/ld.config.txt",
+            "/plat_property_contexts", "/property_contexts"
+        ).forEach { path ->
+            if (File(path).exists()) {
+                args += "-b"
+                args += path
+            }
+        }
+        args += listOf(
             "-b", "/dev",
             "-b", "/proc",
             "-b", "/sys",
-            "-w", "/root",
+            "-b", File(context.filesDir.parentFile, "local").absolutePath,
+            "-r", rootfsDir.absolutePath,
+            "-0", // appear as root inside the rootfs (fakeroot-style, no real privilege)
+            "--link2symlink",
+            "--sysvipc",
+            "-L",
             "/bin/sh"
         )
+        return args
     }
 
     /**
