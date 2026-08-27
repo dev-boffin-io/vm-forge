@@ -20,14 +20,28 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            // Dedicated release keystore — apps signed with the shared,
+            // publicly-known debug key appear to get stricter sandboxing
+            // (including exec restrictions) on some hardened ROMs (MIUI
+            // and similar), which may be the actual cause of PRoot's
+            // execve() failures persisting even in "release" builds that
+            // were still debug-signed. This is a throwaway key for
+            // personal/dev use — replace with a real keystore before ever
+            // publishing anywhere.
+            storeFile = file("release.keystore")
+            storePassword = "vmforge123"
+            keyAlias = "vmforge"
+            keyPassword = "vmforge123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // v0.1: no dedicated release keystore yet, so release builds are
-            // signed with the auto-generated debug keystore for now — this
-            // lets CI-built APKs install directly on a phone.
-            // (a proper keystore will be needed for production/Play Store)
-            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
