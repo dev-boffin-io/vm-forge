@@ -103,8 +103,7 @@ class PRootLauncher(private val context: Context) {
             "--kill-on-exit",
             "-w", "/"
         )
-        // Bind host system/linker-namespace paths in, same as ReTerminal's
-        // proven-working invocation — earlier attempts without these still
+        // Bind host system/linker-namespace paths in — earlier attempts without these still
         // failed identically even with a byte-for-byte verified rootfs, so
         // something about proot's own operation apparently depends on
         // these being visible, not just the target binary's own existence.

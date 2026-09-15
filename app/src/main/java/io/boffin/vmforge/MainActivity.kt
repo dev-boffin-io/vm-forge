@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
@@ -16,7 +17,6 @@ class MainActivity : AppCompatActivity() {
         private const val NOTIFICATION_PERMISSION_REQUEST = 102
         private const val PICK_DISK_REQUEST = 201
         private const val PICK_SEED_REQUEST = 202
-        private const val PICK_ROOTFS_REQUEST = 203
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -149,12 +149,39 @@ class MainActivity : AppCompatActivity() {
         }
 
         // --- PRoot Container (separate mode from the QEMU VM above) ---
-        findViewById<Button>(R.id.importRootfsButton).setOnClickListener {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
+        findViewById<Button>(R.id.downloadRootfsButton).setOnClickListener {
+            val urlInput = findViewById<EditText>(R.id.rootfsUrlInput)
+            val url = urlInput.text.toString().trim()
+            if (url.isEmpty()) {
+                Toast.makeText(this, "Enter a rootfs .tar.gz URL first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-            startActivityForResult(intent, PICK_ROOTFS_REQUEST)
+            Toast.makeText(this, "Downloading rootfs… large archives can take a while", Toast.LENGTH_LONG).show()
+            var lastReportedPercent = -1
+            RootfsImporter.downloadAndExtract(
+                this,
+                url,
+                onProgress = { downloaded, total ->
+                    if (total > 0) {
+                        val percent = ((downloaded * 100) / total).toInt()
+                        if (percent != lastReportedPercent && percent % 10 == 0) {
+                            lastReportedPercent = percent
+                            runOnUiThread {
+                                Toast.makeText(this, "Downloading… $percent%", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                onDone = { success, message ->
+                    runOnUiThread {
+                        if (success) {
+                            Toast.makeText(this, "Rootfs ready: $message", Toast.LENGTH_LONG).show()
+                        } else {
+                            showFullTextDialog("Download/extract failed", message)
+                        }
+                    }
+                }
+            )
         }
         findViewById<Button>(R.id.diagnoseSyscallButton).setOnClickListener {
             Toast.makeText(
@@ -207,19 +234,6 @@ class MainActivity : AppCompatActivity() {
         val destName = when (requestCode) {
             PICK_DISK_REQUEST -> "rootfs.qcow2"
             PICK_SEED_REQUEST -> "seed.iso"
-            PICK_ROOTFS_REQUEST -> {
-                Toast.makeText(this, "Extracting rootfs… this can take a while for a full distro", Toast.LENGTH_LONG).show()
-                RootfsImporter.extract(this, uri) { success, message ->
-                    runOnUiThread {
-                        if (success) {
-                            Toast.makeText(this, "Rootfs ready: $message", Toast.LENGTH_LONG).show()
-                        } else {
-                            showFullTextDialog("Extract failed", message)
-                        }
-                    }
-                }
-                return
-            }
             else -> return
         }
 

@@ -13,7 +13,7 @@ import java.io.File
  * Extracts a PRoot rootfs tarball (.tar.gz, e.g. a Debian/Ubuntu/Alpine
  * arm64 base rootfs from proot-distro or debootstrap) into
  * filesDir.parentFile/local/proot-rootfs — a sibling of filesDir, NOT a
- * subdirectory of it. See [ROOTFS_DIR] for why this location specifically.
+ * subdirectory of it. See [rootfsDir] for why this location specifically.
  *
  * FULL HISTORY, for anyone re-reading this — the long road here:
  * 1. Extracting a full Linux rootfs needs mknod(), link()/linkat(), and
@@ -33,14 +33,17 @@ import java.io.File
  *    this device returns EACCES for exec() from filesDir specifically).
  * 3. Tried routing everything through Shizuku (shell UID) — technically
  *    worked but heavyweight, and turned out to be solving the wrong
- *    problem: comparing against a known-working reference app
- *    (RohitKushvaha01/ReTerminal) showed it keeps its rootfs at
- *    filesDir.parentFile/"local"/... — a *sibling* of filesDir, not
- *    inside it — and needs no Shizuku/root at all for this. The
- *    exec-from-app-data restriction on this device apparently targets
- *    the "files" subdirectory specifically, not the whole private data
- *    root. Switched to the same sibling-directory pattern; Shizuku
- *    removed as unnecessary.
+ *    problem: comparing against a known-working reference setup showed
+ *    the rootfs needs to live at filesDir.parentFile/"local"/... — a
+ *    *sibling* of filesDir, not inside it — and needs no Shizuku/root at
+ *    all for this. The exec-from-app-data restriction on this device
+ *    apparently targets the "files" subdirectory specifically, not the
+ *    whole private data root. Switched to the same sibling-directory
+ *    pattern; Shizuku removed as unnecessary.
+ * 4. Even then, actually *running* anything still failed identically
+ *    until the bundled proot binary itself was rebuilt from a more
+ *    thoroughly Android-patched source tree — the original prebuilt one
+ *    was of unclear provenance and apparently missing fixes this needs.
  */
 object RootfsImporter {
 
@@ -49,13 +52,90 @@ object RootfsImporter {
      * filesDir (i.e. /data/data/<pkg>/local/proot-rootfs), not
      * filesDir/proot-rootfs. See class doc point 3: this device denies
      * exec() specifically for files under the "files" subdirectory, and
-     * ReTerminal's proven-working pattern is to keep an executable rootfs
-     * in a differently-named sibling directory instead.
+     * a sibling directory avoids that restriction entirely.
      */
     fun rootfsDir(context: Context): File =
         File(File(context.filesDir.parentFile, "local"), "proot-rootfs")
 
-    fun extract(context: Context, uri: Uri, onDone: (Boolean, String) -> Unit) {
+    /**
+     * Downloads [urlString] to a temp file (generous timeouts — rootfs
+     * archives are often several hundred MB, and connections can be slow),
+     * then runs it through the same [extract] pipeline as a picked file.
+     * [onProgress] receives bytes downloaded so far and total bytes if
+     * known (-1 if the server didn't send a Content-Length).
+     */
+    fun downloadAndExtract(
+        context: Context,
+        urlString: String,
+        onProgress: (downloaded: Long, total: Long) -> Unit,
+        onDone: (Boolean, String) -> Unit
+    ) {
+        Thread {
+            val tmpFile = File(context.cacheDir, "rootfs-download.tar.gz")
+            try {
+                val url = java.net.URL(urlString)
+                val connection = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 60_000 // 1 minute to establish a connection
+                    readTimeout = 30 * 60_000 // 30 minutes between reads — large archives, slow links
+                    instanceFollowRedirects = true
+                    requestMethod = "GET"
+                }
+
+                connection.connect()
+                if (connection.responseCode !in 200..299) {
+                    onDone(false, "Download failed: HTTP ${connection.responseCode} ${connection.responseMessage}")
+                    return@Thread
+                }
+
+                val total = connection.contentLengthLong
+                var downloaded = 0L
+                connection.inputStream.use { input ->
+                    tmpFile.outputStream().use { output ->
+                        val buffer = ByteArray(65536)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                            downloaded += read
+                            onProgress(downloaded, total)
+                        }
+                    }
+                }
+
+                extractFromFile(context, tmpFile, onDone)
+            } catch (e: Exception) {
+                onDone(false, "Download failed: ${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                // extract() reads tmpFile synchronously inside its own
+                // thread before returning, so it's safe to leave cleanup
+                // to the OS cache-clearing rather than deleting here and
+                // risking a race — cacheDir is periodically cleared anyway.
+            }
+        }.start()
+    }
+
+    /** Extracts from a picked content:// Uri. */
+    fun extract(context: Context, uri: Uri, onDone: (Boolean, String) -> Unit) =
+        extractFrom(context, {
+            context.contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Could not open picked file")
+        }, onDone)
+
+    /** Extracts from a plain file on disk (used by [downloadAndExtract]). */
+    fun extractFromFile(context: Context, file: File, onDone: (Boolean, String) -> Unit) =
+        extractFrom(context, { file.inputStream() }, onDone)
+
+    /**
+     * Shared implementation. Takes a *factory* rather than a single stream
+     * because the archive may need to be read several times — once for the
+     * extraction itself, and repeatedly during [findCrashingEntry]'s
+     * binary search if extraction dies on a seccomp-blocked syscall.
+     */
+    private fun extractFrom(
+        context: Context,
+        openStream: () -> java.io.InputStream,
+        onDone: (Boolean, String) -> Unit
+    ) {
         Thread {
             val destDir = rootfsDir(context)
             val busybox = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
@@ -72,12 +152,12 @@ object RootfsImporter {
             }
 
             try {
-                val (exitCode, log) = pipeFilteredTarAndExtract(context, uri, tarCmd, destDir, Int.MAX_VALUE)
+                val (exitCode, log) = pipeFilteredTarAndExtract(openStream, tarCmd, destDir, Int.MAX_VALUE)
 
                 if (exitCode != 0) {
                     var message = "tar extraction failed (exit $exitCode): ${log.takeLast(2000)}"
                     if (exitCode == 159) {
-                        val culprit = findCrashingEntry(context, uri, tarCmd)
+                        val culprit = findCrashingEntry(context, openStream, tarCmd)
                         message = "tar extraction crashed (exit 159, seccomp-killed on a " +
                             "privileged syscall) at entry: ${culprit ?: "(could not isolate — " +
                             "crash may not be reproducible in isolation)"}"
@@ -127,8 +207,8 @@ object RootfsImporter {
      * process and only checks its exit code, so the result is exact
      * regardless of pipe buffering.
      */
-    private fun findCrashingEntry(context: Context, uri: Uri, tarCmd: List<String>): String? {
-        val total = countFilteredEntries(context, uri)
+    private fun findCrashingEntry(context: Context, openStream: () -> java.io.InputStream, tarCmd: List<String>): String? {
+        val total = countFilteredEntries(openStream)
         if (total == 0) return null
 
         val probeDest = File(context.cacheDir, "rootfs-probe-dest")
@@ -136,22 +216,22 @@ object RootfsImporter {
             var low = 0
             var high = total
 
-            if (pipeFilteredTarAndExtract(context, uri, tarCmd, probeDest, high).first != 159) return null
+            if (pipeFilteredTarAndExtract(openStream, tarCmd, probeDest, high).first != 159) return null
 
             while (high - low > 1) {
                 val mid = (low + high) / 2
-                val (code, _) = pipeFilteredTarAndExtract(context, uri, tarCmd, probeDest, mid)
+                val (code, _) = pipeFilteredTarAndExtract(openStream, tarCmd, probeDest, mid)
                 if (code == 159) high = mid else low = mid
             }
-            return detailsOfFilteredEntry(context, uri, high - 1)
+            return detailsOfFilteredEntry(openStream, high - 1)
         } finally {
             probeDest.deleteRecursively()
         }
     }
 
-    private fun countFilteredEntries(context: Context, uri: Uri): Int {
+    private fun countFilteredEntries(openStream: () -> java.io.InputStream): Int {
         var count = 0
-        context.contentResolver.openInputStream(uri)?.use { raw ->
+        openStream().use { raw ->
             GzipCompressorInputStream(raw).use { gz ->
                 TarArchiveInputStream(gz).use { tarIn ->
                     var entry = tarIn.nextTarEntry
@@ -165,9 +245,9 @@ object RootfsImporter {
         return count
     }
 
-    private fun detailsOfFilteredEntry(context: Context, uri: Uri, index: Int): String? {
+    private fun detailsOfFilteredEntry(openStream: () -> java.io.InputStream, index: Int): String? {
         var current = -1
-        context.contentResolver.openInputStream(uri)?.use { raw ->
+        openStream().use { raw ->
             GzipCompressorInputStream(raw).use { gz ->
                 TarArchiveInputStream(gz).use { tarIn ->
                     var entry = tarIn.nextTarEntry
@@ -195,8 +275,7 @@ object RootfsImporter {
     }
 
     private fun pipeFilteredTarAndExtract(
-        context: Context,
-        uri: Uri,
+        openStream: () -> java.io.InputStream,
         tarCmd: List<String>,
         destDir: File,
         entryLimit: Int
@@ -213,7 +292,7 @@ object RootfsImporter {
         val pumpThread = Thread {
             try {
                 var written = 0
-                context.contentResolver.openInputStream(uri)?.use { raw ->
+                openStream().use { raw ->
                     GzipCompressorInputStream(raw).use { gz ->
                         TarArchiveInputStream(gz).use { tarIn ->
                             TarArchiveOutputStream(process.outputStream).apply {

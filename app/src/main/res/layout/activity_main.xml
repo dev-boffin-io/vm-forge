@@ -148,12 +148,21 @@
         android:textSize="14sp"
         android:textStyle="bold" />
 
-    <Button
-        android:id="@+id/importRootfsButton"
+    <EditText
+        android:id="@+id/rootfsUrlInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Import PRoot rootfs (.tar.gz)" />
+        android:hint="Rootfs tar.gz URL"
+        android:inputType="textUri"
+        android:singleLine="true" />
+
+    <Button
+        android:id="@+id/downloadRootfsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Download and Import Rootfs" />
 
     <Button
         android:id="@+id/diagnoseSyscallButton"
