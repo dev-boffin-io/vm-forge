@@ -134,6 +134,32 @@ class PRootLauncher(private val context: Context) {
     }
 
     /**
+     * Runs the bundled proot binary directly with --version, and reports
+     * its size. Confirms two things at once: whether the APK actually
+     * shipped the binary we think it did, and whether proot can execute
+     * at all in this process before any rootfs/bind-mount complexity.
+     */
+    fun testProotVersion(): String {
+        val prootBinary = File(nativeLibDir, "libproot.so")
+        val report = StringBuilder()
+        report.appendLine("binary: ${prootBinary.absolutePath}")
+        report.appendLine("exists=${prootBinary.exists()} size=${if (prootBinary.exists()) prootBinary.length() else -1} bytes")
+        report.appendLine("executable=${prootBinary.canExecute()}")
+        report.appendLine()
+        return try {
+            val process = ProcessBuilder(prootBinary.absolutePath, "--version")
+                .redirectErrorStream(true)
+                .apply { environment()["LD_LIBRARY_PATH"] = nativeLibDir.absolutePath }
+                .start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            report.appendLine("--version exit=$exitCode").appendLine(output.take(1500)).toString()
+        } catch (e: Exception) {
+            report.appendLine("--version FAILED: ${e.javaClass.simpleName}: ${e.message}").toString()
+        }
+    }
+
+    /**
      * Clean, proot-independent test for whether this device blocks
      * executing files from a given directory. Copies a known-good
      * nativeLibraryDir binary there and tries to exec it directly via

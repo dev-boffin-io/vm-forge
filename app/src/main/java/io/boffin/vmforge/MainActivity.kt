@@ -201,9 +201,12 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.testExecButton).setOnClickListener {
             Thread {
+                val launcher = PRootLauncher(this)
                 val dir = File(File(filesDir.parentFile, "local"), "exec-test")
-                val result = PRootLauncher(this).testExecFrom(dir)
-                runOnUiThread { showFullTextDialog("Exec test result", result) }
+                val result = launcher.testProotVersion() +
+                    "\n--- exec-from-dir test ---\n" +
+                    launcher.testExecFrom(dir)
+                runOnUiThread { showFullTextDialog("PRoot diagnostics", result) }
             }.start()
         }
         findViewById<Button>(R.id.startProotButton).setOnClickListener {
