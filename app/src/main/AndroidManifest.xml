@@ -52,7 +52,7 @@
                 android:value="Runs a local QEMU virtual machine process" />
         </service>
 
-        <!-- ---- Proot Forge core (Compose terminal + PRoot/Boffin containers) ---- -->
+        <!-- Proot Forge core (Compose terminal + PRoot/Boffin containers) -->
 
         <!-- Proot Forge application entry (from project(":core:main")); sets up
              Res/TerminalUtils/ANRWatchDog and writes the init scripts into
