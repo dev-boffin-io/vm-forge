@@ -4,9 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.TextView
 import android.widget.Button
-import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
@@ -34,16 +33,6 @@ class MainActivity : AppCompatActivity() {
                     NOTIFICATION_PERMISSION_REQUEST
                 )
             }
-        }
-
-        // If a previous SyscallDiagnostic.runDiagnostic() run force-closed
-        // the app, this reports exactly which step it died on.
-        SyscallDiagnostic.readAndClearCrashedStep(this)?.let { crashedStep ->
-            showFullTextDialog(
-                "Syscall diagnostic result",
-                "The app force-closed during the last diagnostic run while attempting: $crashedStep\n\n" +
-                    "This is the syscall that's actually being seccomp-killed."
-            )
         }
 
         val accelStatusView = findViewById<TextView>(R.id.accelStatus)
@@ -148,83 +137,12 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(intent, PICK_SEED_REQUEST)
         }
 
-        // --- PRoot Container (separate mode from the QEMU VM above) ---
-        findViewById<Button>(R.id.downloadRootfsButton).setOnClickListener {
-            val urlInput = findViewById<EditText>(R.id.rootfsUrlInput)
-            val url = urlInput.text.toString().trim()
-            if (url.isEmpty()) {
-                Toast.makeText(this, "Enter a rootfs .tar.gz URL first", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            Toast.makeText(this, "Downloading rootfs… large archives can take a while", Toast.LENGTH_LONG).show()
-            var lastReportedPercent = -1
-            RootfsImporter.downloadAndExtract(
-                this,
-                url,
-                onProgress = { downloaded, total ->
-                    if (total > 0) {
-                        val percent = ((downloaded * 100) / total).toInt()
-                        if (percent != lastReportedPercent && percent % 10 == 0) {
-                            lastReportedPercent = percent
-                            runOnUiThread {
-                                Toast.makeText(this, "Downloading… $percent%", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                },
-                onDone = { success, message ->
-                    runOnUiThread {
-                        if (success) {
-                            Toast.makeText(this, "Rootfs ready: $message", Toast.LENGTH_LONG).show()
-                        } else {
-                            showFullTextDialog("Download/extract failed", message)
-                        }
-                    }
-                }
-            )
-        }
-        findViewById<Button>(R.id.diagnoseSyscallButton).setOnClickListener {
-            Toast.makeText(
-                this,
-                "Running syscall diagnostic — the app may force-close, that's expected. Reopen it after.",
-                Toast.LENGTH_LONG
-            ).show()
-            Thread {
-                val result = SyscallDiagnostic.runDiagnostic(this)
-                runOnUiThread {
-                    showFullTextDialog("Syscall diagnostic — none crashed", result)
-                }
-            }.start()
-        }
-        findViewById<Button>(R.id.verifyRootfsButton).setOnClickListener {
-            showFullTextDialog("Rootfs contents", PRootLauncher(this).verifyRootfs())
-        }
-        findViewById<Button>(R.id.testExecButton).setOnClickListener {
-            Thread {
-                val launcher = PRootLauncher(this)
-                val dir = File(File(filesDir.parentFile, "local"), "exec-test")
-                val result = launcher.testProotVersion() +
-                    "\n--- exec-from-dir test ---\n" +
-                    launcher.testExecFrom(dir)
-                runOnUiThread { showFullTextDialog("PRoot diagnostics", result) }
-            }.start()
-        }
-        findViewById<Button>(R.id.startProotButton).setOnClickListener {
-            if (!PRootLauncher(this).rootfsExists()) {
-                Toast.makeText(this, "No rootfs imported yet — use \"Import PRoot rootfs\" first", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            Toast.makeText(this, "Starting PRoot container…", Toast.LENGTH_SHORT).show()
-            startForegroundService(Intent(this, ProotService::class.java))
-        }
-        findViewById<Button>(R.id.stopProotButton).setOnClickListener {
-            stopService(Intent(this, ProotService::class.java))
-            Toast.makeText(this, "Stop requested", Toast.LENGTH_SHORT).show()
-        }
-        findViewById<Button>(R.id.openProotTerminalButton).setOnClickListener {
-            startActivity(Intent(this, TerminalActivity::class.java).apply {
-                putExtra(TerminalActivity.EXTRA_TARGET, TerminalActivity.TARGET_PROOT)
-            })
+        // Proot Forge: the full Compose terminal with the PRoot/Boffin/NetHunter
+        // container mode (rootfs URL download, sessions, etc). All state lives in
+        // <filesDir-parent>/local — with applicationId io.boffin.vmforge that's
+        // /data/user/0/io.boffin.vmforge/local/.
+        findViewById<Button>(R.id.openProotForgeButton).setOnClickListener {
+            startActivity(Intent(this, io.boffin.proot.ui.activities.terminal.MainActivity::class.java))
         }
     }
 
@@ -250,25 +168,5 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
-    }
-
-    /**
-     * Long diagnostic text (native tool output, stack traces) gets silently
-     * truncated by Toast — this shows it in full, scrollable and selectable
-     * so it can be copied out for a bug report.
-     */
-    private fun showFullTextDialog(title: String, message: String) {
-        val textView = TextView(this).apply {
-            text = message
-            setPadding(48, 32, 48, 32)
-            setTextIsSelectable(true)
-            textSize = 13f
-        }
-        val scroll = android.widget.ScrollView(this).apply { addView(textView) }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(scroll)
-            .setPositiveButton("OK", null)
-            .show()
     }
 }

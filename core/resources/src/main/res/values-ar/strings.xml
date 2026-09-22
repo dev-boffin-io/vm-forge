@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings">الإعدادات</string>
+    <string name="use_shizuku">تسجيل الدخول التلقائي إلى Shizuku</string>
+    <string name="use_shizuku_desc">تنفيذ أمر rish تلقائيًا</string>
+    <string name="keyboard_shortcuts">اختصارات لوحة المفاتيح</string>
+    <string name="keyboard_shortcuts_desc">تفعيل اختصارات لوحة المفاتيح</string>
+    <string name="shortcut_paste">لصق</string>
+    <string name="shortcut_paste_desc">لصق محتوى الحافظة</string>
+    <string name="shortcut_new_session">جلسة جديدة</string>
+    <string name="shortcut_new_session_desc">إنشاء جلسة طرفية جديدة</string>
+    <string name="shortcut_close_session">إغلاق الجلسة</string>
+    <string name="shortcut_close_session_desc">إغلاق الجلسة الطرفية الحالية</string>
+    <string name="shortcut_switch_prev">الجلسة السابقة</string>
+    <string name="shortcut_switch_prev_desc">التبديل إلى الجلسة السابقة</string>
+    <string name="shortcut_switch_next">الجلسة التالية</string>
+    <string name="shortcut_switch_next_desc">التبديل إلى الجلسة التالية</string>
+    <string name="shortcut_capture_title">اضغط على مجموعة مفاتيح</string>
+    <string name="shortcut_capture_hint">في انتظار الإدخال…</string>
+    <string name="shortcut_clear">مسح</string>
+    <string name="input_mode">وضع الإدخال</string>
+    <string name="input_mode_desc">تكوين طريقة تواصل الطرفية مع أساليب الإدخال</string>
+    <string name="input_mode_default">افتراضي (موصى به)</string>
+    <string name="input_mode_default_desc">متوافق مع جميع أساليب الإدخال بما في ذلك CJK</string>
+    <string name="input_mode_type_null">وضع طرفية صارم</string>
+    <string name="input_mode_type_null_desc">صحيح دلاليًا ولكن قد يتعطل بعض أساليب الإدخال</string>
+    <string name="input_mode_visible_password">وضع التوافق القديم</string>
+    <string name="input_mode_visible_password_desc">يصلح مشكلة صدى لوحة مفاتيح سامسونج؛ قد يعطل إدخال CJK في Gboard</string>
+</resources>

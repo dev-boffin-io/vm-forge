@@ -1,16 +1,16 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace = "io.boffin.vmforge"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.boffin.vmforge"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
 
@@ -25,11 +25,8 @@ android {
             // Dedicated release keystore — apps signed with the shared,
             // publicly-known debug key appear to get stricter sandboxing
             // (including exec restrictions) on some hardened ROMs (MIUI
-            // and similar), which may be the actual cause of PRoot's
-            // execve() failures persisting even in "release" builds that
-            // were still debug-signed. This is a throwaway key for
-            // personal/dev use — replace with a real keystore before ever
-            // publishing anywhere.
+            // and similar). This is a throwaway key for personal/dev use —
+            // replace with a real keystore before ever publishing anywhere.
             storeFile = file("release.keystore")
             storePassword = "vmforge123"
             keyAlias = "vmforge"
@@ -49,14 +46,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     // qemu-system-aarch64 must exist as an actual extracted file on disk
     // to be exec'd via ProcessBuilder — AGP's default (uncompressed,
     // mmap'd directly from inside the APK) doesn't leave a real file at
-    // nativeLibraryDir, so force legacy (extract-to-disk) packaging:
+    // nativeLibraryDir, so force legacy (extract-to-disk) packaging. The
+    // PRoot core (libproot.so/libloader.so) is exec'd from the same dir, so
+    // this also guarantees the PRoot loaders are real files on disk.
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -70,14 +66,8 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.fragment:fragment-ktx:1.8.2")
-    // Used to parse and re-stream PRoot rootfs tarballs (tar.gz), filtering
-    // out device/FIFO entries before handing off to the bundled busybox
-    // `tar` for actual extraction — see RootfsImporter for why.
-    implementation("org.apache.commons:commons-compress:1.26.2")
-    implementation("org.tukaani:xz:1.9") // commons-compress needs this for some compression formats
+    implementation(project(":core:main"))
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
 }

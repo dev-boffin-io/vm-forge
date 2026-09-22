@@ -1,5 +1,9 @@
 *.iml
 .gradle
+/core/**/.gradle/
+/core/**/build/
+/core/**/.externalNativeBuild/
+/core/**/.cxx/
 /local.properties
 /.idea/caches
 /.idea/libraries

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">vm-forge</string>
+    <string name="proot_terminal_label">Proot Forge Terminal</string>
 </resources>

@@ -17,19 +17,27 @@ Debian VM entirely on-device, no Termux dependency.
 - `VmService.kt` — foreground service that owns the running QEMU process;
   bindable, so `TerminalActivity` can read/write its stdio directly
 - `MainActivity.kt` — shows KVM/TCG status, Start/Stop VM, Open Terminal,
-  and import buttons for the disk image + cloud-init seed
+  import buttons for the disk image + cloud-init seed, and the
+  "Open Proot Forge Terminal" entrance to the integrated proot-forge core
 - `TerminalActivity.kt` — a minimal interactive console for the VM's
   serial output (ANSI codes stripped for readability; not a full
   VT100 emulator — good for shell use, not for full-screen apps like
-  `top` or `vim`)
+  `top` or `vim`; the Proot Forge terminal is the full-featured one)
+- `core/main`, `core/proot`, `core/components`, `core/resources` — the
+  complete proot-forge core: Compose terminal, SessionService, init
+  scripts, and the native PRoot runtime (`libproot.so`/`libloader.so`
+  built from C source by the `:core:proot` CMake project), including the
+  Boffin rootfs-URL download installer
 
 ## GitHub Actions build
 
 `.github/workflows/build.yml` automatically builds debug and release APKs
-on every push/PR to `main`. Once the build finishes, go to the GitHub
-Actions tab and download `vm-forge-release-apk` (installs directly, no
-extra setup) from that run's "Artifacts" section — no local Android
-Studio/PC setup required.
+on every push/PR to `main` (via the checked-in Gradle wrapper — the AGP
+9.2.1 / Kotlin 2.3.20 toolchain used by the proot core, so no local
+Android Studio/PC setup is required). Once the build
+finishes, go to the GitHub Actions tab and download
+`vm-forge-release-apk` (installs directly, no extra setup) from that
+run's "Artifacts" section.
 
 ## Setting up the VM files
 
@@ -122,64 +130,61 @@ splitting into `-drive if=pflash,file=...code.fd,readonly=on` +
 `-drive if=pflash,file=...vars.fd` (copied to a writable location first)
 is the standard fix.
 
-## PRoot Container (separate mode, no VM at all)
+## Proot Forge (integrated PRoot/Boffin subsystem)
 
-Alongside the QEMU VM path, the app has a second, independent mode:
-**PRoot Container**. Instead of emulating a machine, PRoot chroots
-(without root) into a plain Linux rootfs directory that shares this
-device's own kernel — much lighter and faster than a QEMU VM, but with
-tradeoffs:
+Alongside the QEMU VM path, the app ships the **full proot-forge core**
+(from the `proot-forge` project, as `:core:main` + `:core:proot` +
+`:core:components` + `:core:resources` Gradle modules) as its PRoot
+container subsystem. This replaces the app's original hand-rolled
+PRoot container (`PRootLauncher`/`ProotService`) entirely:
 
-- **ARM64-only** — same-architecture; no x86_64 option here (that would
-  need QEMU user-mode emulation layered inside PRoot, not set up)
-- **No boot, no kernel, no GUI** — PRoot just execs `/bin/sh` directly
-  inside the rootfs; there's no init/systemd, no display, just a shell
-- **Less isolated** — the host's `/dev`, `/proc`, `/sys` are bind-mounted
-  into the rootfs
+- **Compose terminal** (`TerminalView`/`TerminalEmulator` from Termux) —
+  a real ANSI/color/screen-redraw terminal, unlike the VM's line-based
+  `TerminalActivity`
+- **Session service** — `SessionService` keeps each container session
+  running in the foreground; multiple sessions, custom sessions, rename,
+  sort, session switching
+- **Init scripts** — `init-host.sh`/`init.sh`/`rm-wrapper.sh`,
+  auto-extracted from assets into `<filesDir-parent>/local/bin` on every
+  app start (`UpdateManager`)
+- **PRoot runtime with libloader** — built from C source by `:core:proot`
+  (`libproot.so` + `libloader.so`, custom ARM64 build, `--link2symlink`,
+  seccomp, etc.), replaced the previous bundled `libproot.so`
+- **Boffin rootfs URL install** — tap **Add Session → Boffin** inside the
+  terminal to enter a direct `.tar.gz` download URL (manifest-free, no
+  file picker); the archive streams to `filesDir/boffin.tar.gz` and is
+  extracted by `init-host.sh`
+- **NetHunter**, **Android** (host shell), and **Kali (Alpine)** session
+  modes also work, plus a Settings/Customization drawer
 
-Good for quickly running ARM64 Linux command-line tools without the
-overhead of a full VM; not a substitute for the VM path if you need a
-real boot sequence, a desktop GUI, or x86_64 software.
+All container state lives in `<filesDir-parent>/local/`. With this app's
+`applicationId = io.boffin.vmforge`, that resolves to
+`/data/user/0/io.boffin.vmforge/local/` (init scripts use `$PREFIX` =
+`filesDir.parentFile` and `$PKG` = package name, so there are no
+hardcoded `/data/data/io.boffin.proot/...` paths left anywhere).
+
+Build-wise, the proot core requires the newer AGP/Kotlin toolchain that
+`proot-forge` already used (AGP 9.2.1, Kotlin 2.3.20, Gradle 9.4.1 via
+the checked-in wrapper and `gradle/libs.versions.toml` version catalog).
 
 ### Setup
 
-1. Collect the `proot` binary the same way QEMU was collected (the
-   scripts already work with any binary name):
-   ```
-   pkg install proot
-   ./scripts/collect-native-deps.sh proot
-   ./scripts/patch-for-jnilibs.sh
-   ```
-   copy the result into `jniLibs/arm64-v8a/` as before — you'll get
-   `libproot.so` alongside the QEMU binaries (dependencies are mostly
-   shared)
-2. Get a rootfs tarball — e.g. install `proot-distro` in Termux
-   (`pkg install proot-distro`) and use it to fetch one
-   (`proot-distro download debian` or similar produces a `.tar.gz`
-   rootfs you can point the app at), or build one with `debootstrap`
-3. In the app, tap **"Import PRoot rootfs (.tar.gz)"** and pick the
-   tarball from Downloads (same no-adb approach as the VM disk import —
-   extraction happens in-app, no `tar` binary needed)
-4. **"Start PRoot Container"**, then **"Open PRoot Terminal"**
-
-**Untested / worth verifying:** this hasn't been run end-to-end yet —
-worth checking that `-b /dev -b /proc -b /sys` is sufficient for typical
-package-manager operations inside the rootfs, and that a real
-proot-distro-produced tarball extracts cleanly (symlink handling in
-particular is best-effort in `RootfsImporter.kt`).
+1. Open **"Open Proot Forge Terminal"** on the main screen
+2. Tap the menu → **Add Session → Boffin**, paste the rootfs `.tar.gz`
+   URL, and **Download**
+3. The download streams to `filesDir/boffin.tar.gz`, extracts to
+   `local/boffin/root`, and drops you into the container shell — no
+   storage permissions or external tools needed
 
 ## Still to do
-
-- **PRoot Container:** see above — not yet verified end-to-end
 
 - **x86_64 UEFI vars persistence:** see above — not yet verified
 - **In-app VM setup:** the disk image + seed still need to be prepared
   externally (Termux) and imported by hand; a fully in-app
   download/provisioning flow would remove that step
-- **Real terminal emulator:** `TerminalActivity` is line-based and strips
-  ANSI codes rather than rendering them — full-screen console apps
-  inside the VM won't display correctly; swapping in Termux's
-  `TerminalView`/`TerminalEmulator` libraries would fix this
+- **Boffin rootfs URL:** the direct-URL installer is in (from
+  proot-forge); a NetHunter manifest and the upstream Kali rootfs link
+  are bundled but unverified against vm-forge's packaged state
 - **KVM devices:** untested on a device that actually has `/dev/kvm`
   access (e.g. Pixel with pKVM) — should be significantly faster there
   for ARM64 guests (never applies to x86_64 guests, see above)

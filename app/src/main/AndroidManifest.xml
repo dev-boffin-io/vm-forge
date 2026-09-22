@@ -1,21 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- The SSH console only binds to 127.0.0.1, so no external network permission is needed -->
 
     <!-- Required for VmService (standalone QEMU) to run as a foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- PRoot core (Proot Forge): storage access so init scripts can bind /sdcard
+         and /storage into the container -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
     <application
+        android:name="io.boffin.proot.App"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.VmForge"
         android:extractNativeLibs="true"
-        android:usesCleartextTraffic="false">
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"
@@ -43,15 +52,61 @@
                 android:value="Runs a local QEMU virtual machine process" />
         </service>
 
-        <!-- Keeps the PRoot container process running in the foreground -->
+        <!-- ---- Proot Forge core (Compose terminal + PRoot/Boffin containers) ---- -->
+
+        <!-- Proot Forge application entry (from project(":core:main")); sets up
+             Res/TerminalUtils/ANRWatchDog and writes the init scripts into
+             <filesDir-parent>/local/bin on every app start. -->
+
+        <!-- Keeps PRoot TerminalSession processes running in the foreground -->
         <service
-            android:name=".ProotService"
+            android:name="io.boffin.proot.service.SessionService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Runs a local PRoot container process" />
+                android:value="Runs local PRoot terminal sessions" />
         </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Proot Forge terminal (Compose). No MAIN/LAUNCHER filter here — the
+             vm-forge native MainActivity above stays the only launcher; this
+             activity is opened from it. The VIEW filters handle .sh scripts. -->
+        <activity
+            android:name="io.boffin.proot.ui.activities.terminal.MainActivity"
+            android:exported="true"
+            android:label="@string/proot_terminal_label"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Karbon"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/x-sh" />
+                <data android:mimeType="text/x-sh" />
+                <data android:mimeType="text/x-shellscript" />
+                <data android:mimeType="application/x-shellscript" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.sh" />
+                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.sh" />
+            </intent-filter>
+        </activity>
+
+        <!-- com.rk.AlpineDocumentProvider is merged in from core/main's manifest -->
 
     </application>
 </manifest>
