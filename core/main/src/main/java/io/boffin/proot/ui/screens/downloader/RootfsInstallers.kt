@@ -9,6 +9,10 @@ import java.net.URL
 
 class InstallException(message: String) : Exception(message)
 
+// Some middleboxes/captive portals blank agentless HTTP clients, and GitHub's raw CDN
+// also behaves more predictably for requests that identify themselves.
+private const val USER_AGENT = "vm-forge-proot/0.1"
+
 /**
  * Streams a URL's response body into context.filesDir/<outputFileName>, chunked with a
  * progress callback, via a .part temp file + atomic rename on success. Shared by the
@@ -26,6 +30,7 @@ private fun downloadUrlToFile(
         connectTimeout = connectTimeoutMs
         readTimeout = readTimeoutMs
         instanceFollowRedirects = true
+        setRequestProperty("User-Agent", USER_AGENT)
     }
     connection.connect()
     if (connection.responseCode !in 200..299) {
@@ -81,15 +86,22 @@ fun downloadDirectRootfs(
 /**
  * Official Debian rootfs for the main container session. The tarball is the same one the
  * Debian Project's own debuerreotype tooling publishes for its official Docker images
- * (`github.com/debuerreotype/docker-debian-artifacts`), fetched per-ABI directly from the
- * `stable` suite. It streams into `filesDir/debian.tar.gz` and is unpacked by init-host.sh
- * into `local/debian`.
+ * (`github.com/debuerreotype/docker-debian-artifacts`), fetched per-ABI from the frozen
+ * `bookworm` (Debian 12) suite — note "stable" has since moved on to Debian 13 (trixie).
+ * It streams into `filesDir/debian.tar.gz` and is unpacked by init-host.sh into `local/debian`.
  */
 object DebianInstaller {
+    // Serve the tarball straight off GitHub's raw CDN instead of the
+    // github.com/<repo>/raw/... redirect URL — one fewer redirect hop that can break
+    // the stream halfway on device networks.
     private const val ROOTFS_RELEASE_BASE_URL =
-        "https://github.com/debuerreotype/docker-debian-artifacts/raw"
-    // Debian suite to fetch ("stable", "testing", "unstable", ...).
-    private const val SUITE = "stable"
+        "https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts"
+    // Debian suite to fetch (frozen; "stable" now points at trixie). Matches the
+    // "Debian 12" branding shown in the app.
+    private const val SUITE = "bookworm"
+    // Marker file (beside debian.tar.gz) recording which suite the current archive
+    // belongs to, so an older archive downloaded from another suite is re-fetched.
+    private const val SUITE_MARKER = "debian.suite"
 
     private val abiToDebuerreotypeArch = mapOf(
         "arm64-v8a" to "arm64v8",
@@ -103,14 +115,23 @@ object DebianInstaller {
                 "Unsupported CPU architecture: ${android.os.Build.SUPPORTED_ABIS.joinToString()}"
             )
         val arch = abiToDebuerreotypeArch.getValue(abi)
-        val url = "$ROOTFS_RELEASE_BASE_URL/dist-$arch/$SUITE/oci/blobs/rootfs.tar.gz"
+        val outputFile = context.filesDir.child("debian.tar.gz")
+        val marker = context.filesDir.child(SUITE_MARKER)
+
+        val alreadyCurrent = runCatching { marker.readText().trim() == SUITE }
+            .getOrDefault(false)
+        if (outputFile.exists() && outputFile.length() > 0L && alreadyCurrent) {
+            return
+        }
+
         downloadUrlToFile(
-            url = url,
-            outputFile = context.filesDir.child("debian.tar.gz"),
-            connectTimeoutMs = 15_000,
-            readTimeoutMs = 15_000,
+            url = "$ROOTFS_RELEASE_BASE_URL/dist-$arch/$SUITE/oci/blobs/rootfs.tar.gz",
+            outputFile = outputFile,
+            connectTimeoutMs = 120_000,
+            readTimeoutMs = 120_000,
             label = "Debian",
             onProgress = onProgress
         )
+        marker.writeText(SUITE)
     }
 }

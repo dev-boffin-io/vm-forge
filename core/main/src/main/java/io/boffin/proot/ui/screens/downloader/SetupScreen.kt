@@ -1,6 +1,5 @@
 package io.boffin.proot.ui.screens.downloader
 
-import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,16 +18,6 @@ import io.boffin.proot.ui.screens.terminal.TerminalScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-
-// Base URL where the official Debian rootfs tarballs (the same ones Debian's official
-// Docker images are built from, via the Debian Project's debuerreotype tooling) are
-// published as per-architecture branches: dist-arm64v8, dist-arm32v7, dist-amd64, ...
-private const val ROOTFS_RELEASE_BASE_URL =
-    "https://github.com/debuerreotype/docker-debian-artifacts/raw"
-private const val DEBIAN_SUITE = "stable"
 
 private fun hasRootAccess(): Boolean {
     val paths = listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/su/bin/su")
@@ -76,57 +65,7 @@ fun SetupScreen(
 
         withContext(Dispatchers.IO) {
             try {
-                val abis = Build.SUPPORTED_ABIS
-                val abi = abis.firstOrNull {
-                    it in listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-                } ?: throw RuntimeException("Unsupported CPU architectures: ${abis.joinToString()}")
-
-                val debianArch = when (abi) {
-                    "arm64-v8a" -> "arm64v8"
-                    "armeabi-v7a" -> "arm32v7"
-                    "x86_64" -> "amd64"
-                    else -> throw RuntimeException("Unsupported ABI: $abi")
-                }
-
-                val fileName = "rootfs.tar.gz"
-                val outputFile = context.filesDir.child("debian.tar.gz")
-
-                if (!outputFile.exists() || outputFile.length() == 0L) {
-                    val url = URL("$ROOTFS_RELEASE_BASE_URL/dist-$debianArch/$DEBIAN_SUITE/oci/blobs/$fileName")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.connectTimeout = 15000
-                    connection.readTimeout = 15000
-                    connection.instanceFollowRedirects = true
-                    connection.connect()
-
-                    if (connection.responseCode !in 200..299) {
-                        throw RuntimeException("Download failed: HTTP ${connection.responseCode}")
-                    }
-
-                    val totalSize = connection.contentLength
-                    val tempFile = File(outputFile.path + ".part")
-
-                    connection.inputStream.use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            val buffer = ByteArray(8 * 1024)
-                            var bytesRead: Int
-                            var totalRead = 0L
-                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                totalRead += bytesRead
-                                if (totalSize > 0) {
-                                    val pct = ((totalRead * 100) / totalSize).toInt()
-                                    withContext(Dispatchers.Main) { progress = pct }
-                                }
-                            }
-                        }
-                    }
-
-                    if (!tempFile.renameTo(outputFile)) {
-                        throw RuntimeException("Failed to finalize downloaded rootfs")
-                    }
-                }
-
+                DebianInstaller.downloadIfNeeded(context) { progress = it }
                 withContext(Dispatchers.Main) {
                     Rootfs.isInstalled.value = true
                     isSetupComplete = true

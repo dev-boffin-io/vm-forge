@@ -167,7 +167,8 @@ PRoot container (`PRootLauncher`/`ProotService`) entirely:
 - **Official Debian rootfs** — the main **Add Session → Debian** entry
   downloads the official Debian rootfs tarball
   (`debuerreotype/docker-debian-artifacts`, the same ones Debian's official
-  Docker images are built from, arch-mapped per device ABI) into
+  Docker images are built from, from the pinned **Debian 12 `bookworm`**
+  suite, arch-mapped per device ABI) into
   `filesDir/debian.tar.gz`, extracted to `local/debian` by `init-host.sh`
 - **Android** (host shell) and **Boffin** session modes also work, plus a
   Settings/Customization drawer
@@ -197,8 +198,10 @@ the checked-in wrapper and `gradle/libs.versions.toml` version catalog).
   externally (Termux) and imported by hand; a fully in-app
   download/provisioning flow would remove that step
 - **Boffin rootfs URL:** the direct-URL installer is in (from
-  proot-forge); the bundled Debian rootfs link is unverified against
-  vm-forge's packaged state
+  proot-forge); the official Debian download is real — the bundled
+  debuerreotype link now serves the frozen Debian 12 (bookworm) suite
+  straight from GitHub's raw CDN (upgraded from `github.com/.../raw`
+  redirects, which could stall the stream on device networks)
 - **KVM devices:** untested on a device that actually has `/dev/kvm`
   access (e.g. Pixel with pKVM) — should be significantly faster there
   for ARM64 guests (never applies to x86_64 guests, see above)
