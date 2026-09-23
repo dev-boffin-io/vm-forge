@@ -63,13 +63,10 @@ fun SettingsCard(
 }
 
 object WorkingMode {
-    const val ALPINE = 0
+    const val DEBIAN = 0
     const val ANDROID = 1
-    // Named NETHUNTER (was briefly renamed CUSTOM, then renamed back) - "Custom" is now
-    // upstream's own, differently implemented Custom Session/chroot feature, so this frees
-    // the name up to avoid confusion. Same int value (2) throughout, so nothing about what's
-    // persisted changes across any of these renames.
-    const val NETHUNTER = 2
+    // Value 2 was NetHunter, which has been removed. BOFFIN stays at 3 so nothing already
+    // persisted changes for existing installs.
     const val BOFFIN = 3
 }
 
@@ -102,14 +99,14 @@ fun Settings(
     ) {
         PreferenceGroup(heading = stringResource(strings.default_working_mode)) {
             WorkingModeOption(
-                title = "Kali",
-                description = stringResource(strings.alpine_desc),
-                selected = !defaultIsCustom && selectedWorkingMode == WorkingMode.ALPINE
+                title = "Debian",
+                description = stringResource(strings.debian_desc),
+                selected = !defaultIsCustom && selectedWorkingMode == WorkingMode.DEBIAN
             ) {
                 defaultIsCustom = false
                 Settings.default_is_custom = false
-                selectedWorkingMode = WorkingMode.ALPINE
-                Settings.working_Mode = WorkingMode.ALPINE
+                selectedWorkingMode = WorkingMode.DEBIAN
+                Settings.working_Mode = WorkingMode.DEBIAN
             }
             WorkingModeOption(
                 title = "Android",

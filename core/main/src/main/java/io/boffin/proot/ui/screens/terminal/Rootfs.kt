@@ -18,7 +18,6 @@ enum class ExecMode(val value: Int) {
 
 object Rootfs {
     var isInstalled = mutableStateOf(false)
-    var isNetHunterInstalled = mutableStateOf(false)
     var isBoffinInstalled = mutableStateOf(false)
     var execMode = mutableStateOf(ExecMode.fromInt(Settings.exec_mode))
 
@@ -29,21 +28,13 @@ object Rootfs {
 
     fun checkInstallation(context: Context) {
         isInstalled.value = isRootfsInstalled(context)
-        isNetHunterInstalled.value = isNetHunterRootfsInstalled(context)
         isBoffinInstalled.value = isBoffinRootfsInstalled(context)
     }
 
     fun isRootfsInstalled(context: Context): Boolean {
-        val alpineDir = context.localDir().child("alpine")
-        val isExtracted = alpineDir.exists() && (alpineDir.list()?.any { it != "root" && it != "tmp" } == true)
-        val isArchivePresent = context.filesDir.child("alpine.tar.gz").exists()
-        return isExtracted || isArchivePresent
-    }
-
-    fun isNetHunterRootfsInstalled(context: Context): Boolean {
-        val netHunterDir = context.localDir().child("nethunter")
-        val isExtracted = netHunterDir.exists() && (netHunterDir.list()?.any { it != "root" && it != "tmp" } == true)
-        val isArchivePresent = context.filesDir.child("nethunter.tar.xz").exists()
+        val debianDir = context.localDir().child("debian")
+        val isExtracted = debianDir.exists() && (debianDir.list()?.any { it != "root" && it != "tmp" } == true)
+        val isArchivePresent = context.filesDir.child("debian.tar.gz").exists()
         return isExtracted || isArchivePresent
     }
 

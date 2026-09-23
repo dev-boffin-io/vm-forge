@@ -33,7 +33,7 @@ fun RunScriptDialog(
     onRun: (Int, CustomSession?) -> Unit
 ) {
     val customSessions = remember { CustomSessions.getAll() }
-    var selectedMode by remember { mutableIntStateOf(WorkingMode.ALPINE) }
+    var selectedMode by remember { mutableIntStateOf(WorkingMode.DEBIAN) }
     var selectedCustom by remember { mutableStateOf<CustomSession?>(null) }
     var selectedIsCustom by remember { mutableStateOf(false) }
 
@@ -60,20 +60,15 @@ fun RunScriptDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 ScriptSessionOption(
-                    title = "Kali",
-                    description = stringResource(strings.alpine_desc),
-                    selected = !selectedIsCustom && selectedMode == WorkingMode.ALPINE
-                ) { select(WorkingMode.ALPINE, null, false) }
+                    title = "Debian",
+                    description = stringResource(strings.debian_desc),
+                    selected = !selectedIsCustom && selectedMode == WorkingMode.DEBIAN
+                ) { select(WorkingMode.DEBIAN, null, false) }
                 ScriptSessionOption(
                     title = "Android",
                     description = stringResource(strings.android_desc),
                     selected = !selectedIsCustom && selectedMode == WorkingMode.ANDROID
                 ) { select(WorkingMode.ANDROID, null, false) }
-                ScriptSessionOption(
-                    title = "NetHunter",
-                    description = "Kali NetHunter (full, arm64 only)",
-                    selected = !selectedIsCustom && selectedMode == WorkingMode.NETHUNTER
-                ) { select(WorkingMode.NETHUNTER, null, false) }
                 ScriptSessionOption(
                     title = "Boffin",
                     description = "Debian 12 XFCE4 desktop",
@@ -84,7 +79,7 @@ fun RunScriptDialog(
                         title = session.name,
                         description = session.shellPath,
                         selected = selectedIsCustom && selectedCustom?.id == session.id
-                    ) { select(WorkingMode.ALPINE, session, true) }
+                    ) { select(WorkingMode.DEBIAN, session, true) }
                 }
             }
         },

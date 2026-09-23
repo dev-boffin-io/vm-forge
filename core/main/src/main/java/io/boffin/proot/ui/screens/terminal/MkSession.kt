@@ -1,14 +1,13 @@
 package io.boffin.proot.ui.screens.terminal
 
 import android.content.Context
-import com.rk.libcommons.alpineHomeDir
 import com.rk.libcommons.child
 import com.rk.libcommons.createFileIfNot
 import com.rk.libcommons.localBinDir
 import com.rk.libcommons.localDir
 import com.rk.libcommons.localLibDir
 import com.rk.libcommons.boffinHomeDir
-import com.rk.libcommons.nethunterHomeDir
+import com.rk.libcommons.debianHomeDir
 import io.boffin.proot.App.Companion.getTempDir
 import io.boffin.proot.BuildConfig
 import io.boffin.proot.ui.screens.settings.WorkingMode
@@ -39,12 +38,11 @@ object MkSession {
             )
 
             val workingDir = pendingCommand?.workingDir ?: when (workingMode) {
-                WorkingMode.NETHUNTER -> nethunterHomeDir().path
                 WorkingMode.BOFFIN -> boffinHomeDir().path
-                else -> alpineHomeDir().path
+                else -> debianHomeDir().path
             }
 
-            val useChroot = workingMode == WorkingMode.ALPINE && Rootfs.execMode.value == ExecMode.CHROOT
+            val useChroot = workingMode == WorkingMode.DEBIAN && Rootfs.execMode.value == ExecMode.CHROOT
 
             val initFile: File = localBinDir().child("init-host")
             if (initFile.exists().not()) {
@@ -104,14 +102,12 @@ object MkSession {
                 "CHROOT=${if (File("/system/bin/chroot").exists()) "/system/bin/chroot" else "/system/xbin/chroot"}",
                 "USE_CHROOT=${if (useChroot) "1" else "0"}",
                 "DISTRO_DIR=${when (workingMode) {
-                    WorkingMode.NETHUNTER -> "nethunter"
                     WorkingMode.BOFFIN -> "boffin"
-                    else -> "alpine"
+                    else -> "debian"
                 }}",
                 "DISTRO_ARCHIVE=${when (workingMode) {
-                    WorkingMode.NETHUNTER -> "nethunter.tar.xz"
                     WorkingMode.BOFFIN -> "boffin.tar.gz"
-                    else -> "alpine.tar.gz"
+                    else -> "debian.tar.gz"
                 }}",
             )
 
@@ -140,7 +136,7 @@ object MkSession {
 
             val args: Array<String>
             val shell = if (pendingCommand == null) {
-                args = if (workingMode == WorkingMode.ALPINE || workingMode == WorkingMode.NETHUNTER || workingMode == WorkingMode.BOFFIN) {
+                args = if (workingMode == WorkingMode.DEBIAN || workingMode == WorkingMode.BOFFIN) {
                     val targetInit = if (useChroot) initChrootFile else initFile
                     arrayOf("-c", targetInit.absolutePath)
                 } else {
@@ -202,8 +198,8 @@ object MkSession {
     /**
      * Builds the shell/args for running a script the user opened the app with (via the .sh
      * VIEW intent filter) inside a chosen session type. Applies the same reasoning as
-     * [createSession] for which init file to run for Alpine/NetHunter/Boffin (chroot vs proot
-     * only matters for Alpine), a plain custom-session script wrapper when a CustomSession was
+     * [createSession] for which init file to run for Debian/Boffin (chroot vs proot only
+     * matters for Debian), a plain custom-session script wrapper when a CustomSession was
      * picked, or a bare shell invocation for Android.
      */
     fun buildScriptPendingCommand(
@@ -238,8 +234,8 @@ object MkSession {
                     env = null
                 )
             }
-        } else if (workingMode == WorkingMode.ALPINE || workingMode == WorkingMode.NETHUNTER || workingMode == WorkingMode.BOFFIN) {
-            val useChroot = workingMode == WorkingMode.ALPINE && Rootfs.execMode.value == ExecMode.CHROOT
+        } else if (workingMode == WorkingMode.DEBIAN || workingMode == WorkingMode.BOFFIN) {
+            val useChroot = workingMode == WorkingMode.DEBIAN && Rootfs.execMode.value == ExecMode.CHROOT
             val initFile = context.localBinDir()
                 .child(if (useChroot) "init-host-chroot" else "init-host")
             PendingCommand(

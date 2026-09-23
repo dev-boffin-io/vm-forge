@@ -13,19 +13,25 @@ export PS1='\[\033[01;32m\]\u@prootforge\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
 #fix linker warning
-if [[ ! -f /linkerconfig/ld.config.txt ]];then
-    mkdir -p /linkerconfig
-    touch /linkerconfig/ld.config.txt
+if [ ! -f /linkerconfig/ld.config.txt ]; then
+    mkdir -p /linkerconfig 2>/dev/null || true
+    touch /linkerconfig/ld.config.txt 2>/dev/null || true
 fi
 
 if [ "$#" -eq 0 ]; then
-    source /etc/profile
+    if [ -f /etc/profile ]; then
+        . /etc/profile
+    fi
     export PS1='\[\033[01;32m\]\u@prootforge\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
     cd $HOME
     if [ -f /initrc ]; then
-        source /initrc
+        . /initrc
     fi
-    /bin/bash
+    if [ -x /bin/bash ]; then
+        /bin/bash
+    else
+        /bin/sh
+    fi
 else
     exec "$@"
 fi

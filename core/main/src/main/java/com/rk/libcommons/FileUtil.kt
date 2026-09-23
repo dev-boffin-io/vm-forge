@@ -14,34 +14,16 @@ fun Context.localDir(): File {
     }
 }
 
-fun Context.alpineDir(): File {
-    return localDir().child("alpine").also {
+fun Context.debianDir(): File {
+    return localDir().child("debian").also {
         if (!it.exists()) {
             it.mkdirs()
         }
     }
 }
 
-fun Context.alpineHomeDir(): File {
-    return alpineDir().child("root").also {
-        if (!it.exists()) {
-            it.mkdirs()
-        }
-    }
-}
-
-// "Custom" session dir (formerly the dedicated NetHunter feature). Function/dir names kept
-// as "nethunter" so existing installs' already-downloaded rootfs keeps working unchanged.
-fun Context.nethunterDir(): File {
-    return localDir().child("nethunter").also {
-        if (!it.exists()) {
-            it.mkdirs()
-        }
-    }
-}
-
-fun Context.nethunterHomeDir(): File {
-    return nethunterDir().child("root").also {
+fun Context.debianHomeDir(): File {
+    return debianDir().child("root").also {
         if (!it.exists()) {
             it.mkdirs()
         }

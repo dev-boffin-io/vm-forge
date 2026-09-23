@@ -47,8 +47,8 @@ fun MainActivityNavHost(
             UpdateStatusBar(mainActivity.window, show)
             // No mandatory first-run rootfs download here (upstream's SetupScreen
             // auto-installs Kali). vm-forge launches straight into the terminal so
-            // rootfs installs happen on demand via Add Session (Boffin rootfs URL,
-            // NetHunter download, or an Alpine archive dropped into filesDir).
+            // rootfs installs happen on demand via Add Session (official Debian rootfs
+            // download, Boffin rootfs URL, or an archive dropped into filesDir).
             TerminalScreen(mainActivity = mainActivity, navController = navController)
         }
         

@@ -1,24 +1,33 @@
 #!/bin/sh
 SU="/system/bin/su"
-ALPINE_DIR=$PREFIX/local/alpine
+ROOTFS_DIR=$PREFIX/local/debian
 
-mkdir -p $ALPINE_DIR
+mkdir -p $ROOTFS_DIR
 
-if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
-    tar -xf "$PREFIX/files/alpine.tar.gz" -C "$ALPINE_DIR"
+if [ -z "$(ls -A "$ROOTFS_DIR" | grep -vE '^(root|tmp)$')" ]; then
+    tar -xf "$PREFIX/files/debian.tar.gz" -C "$ROOTFS_DIR"
 fi
 
-if [ -f "$BIN/rm" ]; then
-    rm -f "$ALPINE_DIR/bin/rm"
-    cp "$BIN/rm" "$ALPINE_DIR/bin/rm"
-    chmod +x "$ALPINE_DIR/bin/rm"
+# The official Debian rootfs tarballs ship without /etc/resolv.conf (it is normally
+# provided by the container runtime), so drop in a static one or DNS won't work at all.
+if [ ! -e "$ROOTFS_DIR/etc/resolv.conf" ]; then
+    $SU -c "mkdir -p '$ROOTFS_DIR/etc'"
+    $SU -c "printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > '$ROOTFS_DIR/etc/resolv.conf'"
+fi
+
+# Only install the busybox-based rm wrapper when the rootfs actually ships busybox
+# (the Alpine-based Kali rootfs did; official Debian rootfs tarballs do not).
+if [ -f "$BIN/rm" ] && { [ -x "$ROOTFS_DIR/bin/busybox" ] || [ -x "$ROOTFS_DIR/usr/bin/busybox" ]; }; then
+    rm -f "$ROOTFS_DIR/bin/rm"
+    cp "$BIN/rm" "$ROOTFS_DIR/bin/rm"
+    chmod +x "$ROOTFS_DIR/bin/rm"
 fi
 
 MOUNTS=""
 
 mnt_bind() {
     src="$1"
-    dst="$ALPINE_DIR${2:-$1}"
+    dst="$ROOTFS_DIR${2:-$1}"
     if [ -e "$src" ] && [ ! -e "$dst" ]; then
         mkdir -p "$(dirname "$dst")" 2>/dev/null
         if [ -d "$src" ]; then
@@ -58,16 +67,16 @@ if [ -e "/proc/self/fd/0" ]; then mnt_bind /proc/self/fd/0 /dev/stdin; fi
 if [ -e "/proc/self/fd/1" ]; then mnt_bind /proc/self/fd/1 /dev/stdout; fi
 if [ -e "/proc/self/fd/2" ]; then mnt_bind /proc/self/fd/2 /dev/stderr; fi
 
-if [ ! -d "$PREFIX/local/alpine/tmp" ]; then
-    $SU -c "mkdir -p '$PREFIX/local/alpine/tmp' && chmod 1777 '$PREFIX/local/alpine/tmp'"
+if [ ! -d "$PREFIX/local/debian/tmp" ]; then
+    $SU -c "mkdir -p '$PREFIX/local/debian/tmp' && chmod 1777 '$PREFIX/local/debian/tmp'"
 fi
-mnt_bind "$PREFIX/local/alpine/tmp" /dev/shm
+mnt_bind "$PREFIX/local/debian/tmp" /dev/shm
 
 if [ -e "$PREFIX/local/stat" ]; then
-    $SU -c "cp '$PREFIX/local/stat' '$ALPINE_DIR/proc/stat'" 2>/dev/null
+    $SU -c "cp '$PREFIX/local/stat' '$ROOTFS_DIR/proc/stat'" 2>/dev/null
 fi
 if [ -e "$PREFIX/local/vmstat" ]; then
-    $SU -c "cp '$PREFIX/local/vmstat' '$ALPINE_DIR/proc/vmstat'" 2>/dev/null
+    $SU -c "cp '$PREFIX/local/vmstat' '$ROOTFS_DIR/proc/vmstat'" 2>/dev/null
 fi
 
 cleanup() {
@@ -77,5 +86,5 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-$SU -c "'$CHROOT' '$ALPINE_DIR' /usr/bin/env -i HOME=/root PATH=/bin:/sbin:/usr/bin:/usr/sbin sh '$PREFIX/local/bin/init' $*"
+$SU -c "'$CHROOT' '$ROOTFS_DIR' /usr/bin/env -i HOME=/root PATH=/bin:/sbin:/usr/bin:/usr/sbin sh '$PREFIX/local/bin/init' $*"
 cleanup

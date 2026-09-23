@@ -137,8 +137,8 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(intent, PICK_SEED_REQUEST)
         }
 
-        // Proot Forge: the full Compose terminal with the PRoot/Boffin/NetHunter
-        // container mode (rootfs URL download, sessions, etc). All state lives in
+        // Proot Forge: the full Compose terminal with the PRoot/Debian/Boffin
+        // container mode (official rootfs download, sessions, etc). All state lives in
         // <filesDir-parent>/local — with applicationId io.boffin.vmforge that's
         // /data/user/0/io.boffin.vmforge/local/.
         findViewById<Button>(R.id.openProotForgeButton).setOnClickListener {

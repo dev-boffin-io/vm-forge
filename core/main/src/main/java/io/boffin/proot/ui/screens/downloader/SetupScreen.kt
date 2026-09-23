@@ -23,10 +23,12 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-// Base URL where the kali-<arch>.tar.gz.rootfs assets are published as GitHub Release
-// files. Update the tag if you publish the rootfs files under a different release.
+// Base URL where the official Debian rootfs tarballs (the same ones Debian's official
+// Docker images are built from, via the Debian Project's debuerreotype tooling) are
+// published as per-architecture branches: dist-arm64v8, dist-arm32v7, dist-amd64, ...
 private const val ROOTFS_RELEASE_BASE_URL =
-    "https://github.com/dev-boffin-io/proot-forge/releases/download/rootfs-v1"
+    "https://github.com/debuerreotype/docker-debian-artifacts/raw"
+private const val DEBIAN_SUITE = "stable"
 
 private fun hasRootAccess(): Boolean {
     val paths = listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/su/bin/su")
@@ -80,17 +82,17 @@ fun SetupScreen(
                 } ?: throw RuntimeException("Unsupported CPU architectures: ${abis.joinToString()}")
 
                 val debianArch = when (abi) {
-                    "arm64-v8a" -> "aarch64"
-                    "armeabi-v7a" -> "armhf"
-                    "x86_64" -> "x86_64"
+                    "arm64-v8a" -> "arm64v8"
+                    "armeabi-v7a" -> "arm32v7"
+                    "x86_64" -> "amd64"
                     else -> throw RuntimeException("Unsupported ABI: $abi")
                 }
 
-                val fileName = "kali-$debianArch.tar.gz.rootfs"
-                val outputFile = context.filesDir.child("alpine.tar.gz")
+                val fileName = "rootfs.tar.gz"
+                val outputFile = context.filesDir.child("debian.tar.gz")
 
                 if (!outputFile.exists() || outputFile.length() == 0L) {
-                    val url = URL("$ROOTFS_RELEASE_BASE_URL/$fileName")
+                    val url = URL("$ROOTFS_RELEASE_BASE_URL/dist-$debianArch/$DEBIAN_SUITE/oci/blobs/$fileName")
                     val connection = url.openConnection() as HttpURLConnection
                     connection.connectTimeout = 15000
                     connection.readTimeout = 15000

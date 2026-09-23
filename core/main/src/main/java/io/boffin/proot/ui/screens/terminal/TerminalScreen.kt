@@ -2,7 +2,6 @@ package io.boffin.proot.ui.screens.terminal
 
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -38,7 +37,7 @@ import com.rk.settings.Settings
 import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
-import io.boffin.proot.ui.screens.downloader.NetHunterInstaller
+import io.boffin.proot.ui.screens.downloader.DebianInstaller
 import io.boffin.proot.ui.screens.downloader.downloadDirectRootfs
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
@@ -115,16 +114,8 @@ fun TerminalScreen(
             onDismiss = { showAddDialog = false },
             onCreateSession = { mode ->
                 when (mode) {
-                    WorkingMode.BOFFIN -> {
-                        if (Rootfs.isBoffinRootfsInstalled(context)) {
-                            proceedToCreateSession(mode)
-                        } else {
-                            showAddDialog = false
-                            showBoffinUrlDialog = true
-                        }
-                    }
-                    WorkingMode.NETHUNTER -> {
-                        if (Rootfs.isNetHunterRootfsInstalled(context)) {
+                    WorkingMode.DEBIAN -> {
+                        if (Rootfs.isRootfsInstalled(context)) {
                             proceedToCreateSession(mode)
                         } else {
                             showAddDialog = false
@@ -134,7 +125,7 @@ fun TerminalScreen(
                             scope.launch {
                                 withContext(Dispatchers.IO) {
                                     try {
-                                        NetHunterInstaller.downloadIfNeeded(context) { pct ->
+                                        DebianInstaller.downloadIfNeeded(context) { pct ->
                                             downloadProgress = pct
                                         }
                                         withContext(Dispatchers.Main) {
@@ -150,6 +141,14 @@ fun TerminalScreen(
                             }
                         }
                     }
+                    WorkingMode.BOFFIN -> {
+                        if (Rootfs.isBoffinRootfsInstalled(context)) {
+                            proceedToCreateSession(mode)
+                        } else {
+                            showAddDialog = false
+                            showBoffinUrlDialog = true
+                        }
+                    }
                     else -> proceedToCreateSession(mode)
                 }
             },
@@ -157,7 +156,7 @@ fun TerminalScreen(
                 val terminal = terminalViewModel.terminalView ?: return@AddSessionDialog
                 val client = TerminalBackEnd(terminal, mainActivity)
                 val pendingCommand = MkSession.buildCustomPendingCommand(context, custom)
-                sessionBinder.createSession(custom.name, client, WorkingMode.ALPINE, pendingCommand)
+                sessionBinder.createSession(custom.name, client, WorkingMode.DEBIAN, pendingCommand)
                 terminalViewModel.changeSession(context, sessionBinder, custom.name)
                 showAddDialog = false
             }
@@ -165,7 +164,7 @@ fun TerminalScreen(
     }
 
     if (downloadingMode != null) {
-        val label = if (downloadingMode == WorkingMode.NETHUNTER) "NetHunter" else "Boffin"
+        val label = if (downloadingMode == WorkingMode.DEBIAN) "Debian" else "Boffin"
         RootfsDownloadDialog(
             label = label,
             verb = "Downloading",
@@ -295,27 +294,19 @@ private fun AddSessionDialog(
     onCreateSession: (Int) -> Unit,
     onCreateCustomSession: (CustomSession) -> Unit
 ) {
-    val isArm64 = "arm64-v8a" in Build.SUPPORTED_ABIS
     val customSessions = remember { CustomSessions.getAll() }
     BasicAlertDialog(onDismissRequest = onDismiss) {
         PreferenceGroup {
             SettingsCard(
-                title = { Text("Kali") },
-                description = { Text(stringResource(strings.alpine_desc)) },
-                onClick = { onCreateSession(WorkingMode.ALPINE) }
+                title = { Text("Debian") },
+                description = { Text(stringResource(strings.debian_desc)) },
+                onClick = { onCreateSession(WorkingMode.DEBIAN) }
             )
             SettingsCard(
                 title = { Text("Android") },
                 description = { Text(stringResource(strings.android_desc)) },
                 onClick = { onCreateSession(WorkingMode.ANDROID) }
             )
-            if (isArm64) {
-                SettingsCard(
-                    title = { Text("NetHunter") },
-                    description = { Text("Kali NetHunter (full, arm64 only)") },
-                    onClick = { onCreateSession(WorkingMode.NETHUNTER) }
-                )
-            }
             SettingsCard(
                 title = { Text("Boffin") },
                 description = { Text("Debian 12 XFCE4 desktop (enter rootfs URL)") },

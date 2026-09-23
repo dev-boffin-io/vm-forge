@@ -1,17 +1,26 @@
-DISTRO_DIR=${DISTRO_DIR:-alpine}
-DISTRO_ARCHIVE=${DISTRO_ARCHIVE:-alpine.tar.gz}
-ALPINE_DIR=$PREFIX/local/$DISTRO_DIR
+DISTRO_DIR=${DISTRO_DIR:-debian}
+DISTRO_ARCHIVE=${DISTRO_ARCHIVE:-debian.tar.gz}
+ROOTFS_DIR=$PREFIX/local/$DISTRO_DIR
 
-mkdir -p $ALPINE_DIR
+mkdir -p $ROOTFS_DIR
 
-if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
-    tar -xf "$PREFIX/files/$DISTRO_ARCHIVE" -C "$ALPINE_DIR"
+if [ -z "$(ls -A "$ROOTFS_DIR" | grep -vE '^(root|tmp)$')" ]; then
+    tar -xf "$PREFIX/files/$DISTRO_ARCHIVE" -C "$ROOTFS_DIR"
 fi
 
-if [ -f "$BIN/rm" ]; then
-    rm -f "$ALPINE_DIR/bin/rm"
-    cp "$BIN/rm" "$ALPINE_DIR/bin/rm"
-    chmod +x "$ALPINE_DIR/bin/rm"
+# The official Debian rootfs tarballs ship without /etc/resolv.conf (it is normally
+# provided by the container runtime), so drop in a static one or DNS won't work at all.
+if [ ! -e "$ROOTFS_DIR/etc/resolv.conf" ]; then
+    mkdir -p "$ROOTFS_DIR/etc"
+    printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > "$ROOTFS_DIR/etc/resolv.conf"
+fi
+
+# Only install the busybox-based rm wrapper when the rootfs actually ships busybox
+# (the Alpine-based Kali rootfs did; official Debian rootfs tarballs do not).
+if [ -f "$BIN/rm" ] && { [ -x "$ROOTFS_DIR/bin/busybox" ] || [ -x "$ROOTFS_DIR/usr/bin/busybox" ]; }; then
+    rm -f "$ROOTFS_DIR/bin/rm"
+    cp "$BIN/rm" "$ROOTFS_DIR/bin/rm"
+    chmod +x "$ROOTFS_DIR/bin/rm"
 fi
 
 ARGS="--kill-on-exit"

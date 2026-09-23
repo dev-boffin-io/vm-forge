@@ -83,7 +83,7 @@ object Settings {
         set(value) = Preference.setFloat(key = "wallTransparency",value)
 
     var working_Mode
-        get() = Preference.getInt(key = "workingMode", default = WorkingMode.ALPINE)
+        get() = Preference.getInt(key = "workingMode", default = WorkingMode.DEBIAN)
         set(value) = Preference.setInt(key = "workingMode",value)
 
     var input_mode

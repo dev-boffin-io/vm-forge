@@ -154,8 +154,13 @@ PRoot container (`PRootLauncher`/`ProotService`) entirely:
   terminal to enter a direct `.tar.gz` download URL (manifest-free, no
   file picker); the archive streams to `filesDir/boffin.tar.gz` and is
   extracted by `init-host.sh`
-- **NetHunter**, **Android** (host shell), and **Kali (Alpine)** session
-  modes also work, plus a Settings/Customization drawer
+- **Official Debian rootfs** — the main **Add Session → Debian** entry
+  downloads the official Debian rootfs tarball
+  (`debuerreotype/docker-debian-artifacts`, the same ones Debian's official
+  Docker images are built from, arch-mapped per device ABI) into
+  `filesDir/debian.tar.gz`, extracted to `local/debian` by `init-host.sh`
+- **Android** (host shell) and **Boffin** session modes also work, plus a
+  Settings/Customization drawer
 
 All container state lives in `<filesDir-parent>/local/`. With this app's
 `applicationId = io.boffin.vmforge`, that resolves to
@@ -183,8 +188,8 @@ the checked-in wrapper and `gradle/libs.versions.toml` version catalog).
   externally (Termux) and imported by hand; a fully in-app
   download/provisioning flow would remove that step
 - **Boffin rootfs URL:** the direct-URL installer is in (from
-  proot-forge); a NetHunter manifest and the upstream Kali rootfs link
-  are bundled but unverified against vm-forge's packaged state
+  proot-forge); the bundled Debian rootfs link is unverified against
+  vm-forge's packaged state
 - **KVM devices:** untested on a device that actually has `/dev/kvm`
   access (e.g. Pixel with pKVM) — should be significantly faster there
   for ARM64 guests (never applies to x86_64 guests, see above)

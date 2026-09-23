@@ -106,7 +106,7 @@
             </intent-filter>
         </activity>
 
-        <!-- com.rk.AlpineDocumentProvider is merged in from core/main's manifest -->
+        <!-- com.rk.DebianDocumentProvider is merged in from core/main's manifest -->
 
     </application>
 </manifest>
