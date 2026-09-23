@@ -113,22 +113,32 @@ To add the x86_64 binary (this only needs to be done once):
    you should end up with both `libqemu_system_aarch64.so` and
    `libqemu_system_x86_64.so` side by side, sharing the same dependency
    `.so` files
-5. Also copy `edk2-x86_64-code.fd` (from `$PREFIX/share/qemu/`) into
-   `app/src/main/assets/qemu-libs/`, alongside the existing
-   `edk2-aarch64-code.fd`
+5. Also copy `edk2-x86_64-code.fd` **and** `edk2-x86_64-vars.fd` (both
+   from `$PREFIX/share/qemu/`) into `app/src/main/assets/qemu-libs/`,
+   alongside the existing `edk2-aarch64-code.fd`. The `VARS` file is
+   mandatory — see below.
 6. Get an x86_64 Debian cloud image (same idea as
    `debian-13-genericcloud-arm64.qcow2` but the `-amd64.qcow2` variant
    from the same `cloud.debian.org` path) and import it the same way
 
-**Untested / worth verifying:** the x86_64 machine type (`q35`) is
-launched with only the `CODE` firmware file via `-bios`, mirroring the
-ARM64 `virt` machine's setup — but x86 OVMF conventionally wants a
-separate writable `VARS` file too (`edk2-x86_64-vars.fd`) for NVRAM
-persistence across boots. It may work fine read-only for a single
-session; if UEFI boot menu settings don't persist or boot fails,
-splitting into `-drive if=pflash,file=...code.fd,readonly=on` +
-`-drive if=pflash,file=...vars.fd` (copied to a writable location first)
-is the standard fix.
+**x86_64 = q35 + OVMF pflash (fixed & verified):** unlike the ARM64
+`virt` machine (which loads its full EDK2 image via `-bios`), the q35
+machine **refuses an OVMF `CODE` image via `-bios`** — it hard-exits
+with `could not load PC BIOS` because q35's `-bios` slot expects a 2MB
+image and OVMF CODE is 3.6MB. The launcher therefore gives q35 two
+pflash drives instead:
+
+- `-drive if=pflash,format=raw,unit=0,file=edk2-x86_64-code.fd,readonly=on`
+- `-drive if=pflash,format=raw,unit=1,file=edk2-x86_64-vars.fd`
+  (writable, so UEFI NVRAM now persists across boots)
+
+plus `-vga none` (q35 creates a default std VGA whose `vgabios-stdvga.bin`
+lives in QEMU's Termux data dir — absent on-device without Termux) and a
+`virtio-net-pci` NIC with `romfile=` (q35 has no `virtio-bus`, and
+`virtio-net-device` dies with `No 'virtio-bus' bus found`; the empty
+`romfile=` also skips the `efi-virtio.rom` that would otherwise be looked
+up in that same missing data dir). Boot-tested: OVMF → GRUB → Debian
+cloud amd64 kernel comes all the way up.
 
 ## Proot Forge (integrated PRoot/Boffin subsystem)
 
@@ -183,7 +193,6 @@ the checked-in wrapper and `gradle/libs.versions.toml` version catalog).
 
 ## Still to do
 
-- **x86_64 UEFI vars persistence:** see above — not yet verified
 - **In-app VM setup:** the disk image + seed still need to be prepared
   externally (Termux) and imported by hand; a fully in-app
   download/provisioning flow would remove that step

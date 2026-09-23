@@ -51,14 +51,11 @@ class NativeVmLauncher(
     private val machineType: String
         get() = if (guestArch == KvmDetector.GuestArch.X86_64) "q35" else "virt"
 
-    private val firmwareAssetName: String
-        get() = if (guestArch == KvmDetector.GuestArch.X86_64) "edk2-x86_64-code.fd" else "edk2-aarch64-code.fd"
-
-    /** Copies the UEFI firmware (plain data, not executed) from assets on first run. */
-    private fun ensureFirmwareExtracted(): File {
-        val dest = File(vmDir, firmwareAssetName)
+    /** Copies a UEFI firmware blob (plain data, not executed) from assets on first run. */
+    private fun ensureFirmwareExtracted(assetName: String): File {
+        val dest = File(vmDir, assetName)
         if (!dest.exists()) {
-            context.assets.open("qemu-libs/$firmwareAssetName").use { input ->
+            context.assets.open("qemu-libs/$assetName").use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
         }
@@ -68,7 +65,6 @@ class NativeVmLauncher(
     fun buildCommand(): List<String> {
         val accel = KvmDetector.detect(guestArch)
         val qemuBinary = File(nativeLibDir, "libqemu_system_$archSuffix.so")
-        val uefiCode = ensureFirmwareExtracted()
         // Single VM slot for now — whichever architecture is selected uses
         // the same rootfs.qcow2/seed.iso names (import the matching image
         // for whichever arch you're about to start).
@@ -80,12 +76,44 @@ class NativeVmLauncher(
             "-M", machineType,
             "-cpu", "max",
             "-smp", "2",
-            "-m", "2048",
-            "-bios", uefiCode.absolutePath,
-            "-drive", "file=${disk.absolutePath},if=virtio,format=qcow2",
-            "-device", "virtio-net-device,netdev=net0",
-            "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:$sshPort-:22"
+            "-m", "2048"
         )
+
+        if (guestArch == KvmDetector.GuestArch.X86_64) {
+            // Load OVMF as two q35 pflash drives: read-only CODE + writable VARS.
+            // Passing the 3.6MB OVMF CODE image via -bios hard-fails on q35 with
+            // "could not load PC BIOS" (q35's -bios slot expects a 2MB image),
+            // so the app never even got started for amd64 — this is the fix.
+            val uefiCode = ensureFirmwareExtracted("edk2-x86_64-code.fd")
+            val uefiVars = ensureFirmwareExtracted("edk2-x86_64-vars.fd")
+            cmd.add("-drive")
+            cmd.add("if=pflash,format=raw,unit=0,file=${uefiCode.absolutePath},readonly=on")
+            cmd.add("-drive")
+            cmd.add("if=pflash,format=raw,unit=1,file=${uefiVars.absolutePath}")
+            // q35 creates a default std VGA unless told not to; that needs
+            // vgabios-stdvga.bin from QEMU's (missing-on-device) data dir and
+            // aborts startup. Disable it — the non-headless path adds
+            // virtio-gpu-pci explicitly below.
+            cmd.add("-vga"); cmd.add("none")
+        } else {
+            // ARM64 "virt" machine: full 64MB EDK2 image loads fine via -bios.
+            val uefiCode = ensureFirmwareExtracted("edk2-aarch64-code.fd")
+            cmd.add("-bios"); cmd.add(uefiCode.absolutePath)
+        }
+
+        cmd.add("-drive"); cmd.add("file=${disk.absolutePath},if=virtio,format=qcow2")
+        // NIC. On ARM64 "virt" there's a virtio-mmio bus so "virtio-net-device"
+        // works; q35 has no virtio-bus (only PCI) and dies with "No 'virtio-bus'
+        // bus found". romfile= skips the efi-virtio.rom option ROM, which also
+        // lives in QEMU's Termux data dir and is absent on-device (it would
+        // otherwise hard-abort too).
+        val netDevice = if (guestArch == KvmDetector.GuestArch.X86_64)
+            "virtio-net-pci,netdev=net0,romfile="
+        else
+            "virtio-net-device,netdev=net0"
+        cmd.add("-device"); cmd.add(netDevice)
+        cmd.add("-netdev"); cmd.add("user,id=net0,hostfwd=tcp:127.0.0.1:$sshPort-:22")
+
         if (headless) {
             cmd.add("-nographic")
         } else {
