@@ -9,12 +9,17 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.widget.Toast
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Runs the bundled, standalone QEMU (via NativeVmLauncher) as a foreground
  * service so Android doesn't kill the VM process in the background.
- * Also bindable — TerminalActivity binds to this to read/write the running
- * QEMU process's stdio directly for an interactive console.
+ *
+ * Supports ARM64 and x86_64 VMs **simultaneously**: each architecture gets
+ * its own QEMU process, its own `vm/<arch>` directory (disk image, seed ISO,
+ * firmware, last-command log), and its own serial console. Starting, reading
+ * output, or stopping one architecture never touches the other.
  */
 class VmService : Service() {
 
@@ -24,6 +29,11 @@ class VmService : Service() {
         const val EXTRA_SPICE_PORT = "spice_port"
         const val EXTRA_HEADLESS = "headless"
         const val EXTRA_ARCH = "arch" // "arm64" or "x86_64"
+        const val ARCH_ARM64 = "arm64"
+        const val ARCH_X86_64 = "x86_64"
+
+        fun archKey(arch: KvmDetector.GuestArch): String =
+            if (arch == KvmDetector.GuestArch.X86_64) ARCH_X86_64 else ARCH_ARM64
     }
 
     inner class LocalBinder : Binder() {
@@ -31,8 +41,7 @@ class VmService : Service() {
     }
     private val binder = LocalBinder()
 
-    var qemuProcess: Process? = null
-        private set
+    private val processes = ConcurrentHashMap<String, Process>()
 
     private val channelId = "vm_forge_running"
 
@@ -47,41 +56,69 @@ class VmService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = Notification.Builder(this, channelId)
-            .setContentTitle("vm-forge")
-            .setContentText("VM running in background")
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .build()
-        startForeground(1, notification)
+        startForeground(1, buildNotification())
+        updateNotification()
 
-        if (qemuProcess == null || qemuProcess?.isAlive != true) {
+        val archKey = intent?.getStringExtra(EXTRA_ARCH) ?: ARCH_ARM64
+        if (!isRunning(archKey)) {
             val sshPort = intent?.getIntExtra(EXTRA_SSH_PORT, 2222) ?: 2222
             val vncPort = intent?.getIntExtra(EXTRA_VNC_PORT, -1)?.takeIf { it > 0 }
             val spicePort = intent?.getIntExtra(EXTRA_SPICE_PORT, -1)?.takeIf { it > 0 }
             val headless = intent?.getBooleanExtra(EXTRA_HEADLESS, true) ?: true
-            val arch = if (intent?.getStringExtra(EXTRA_ARCH) == "x86_64")
+            val arch = if (archKey == ARCH_X86_64)
                 KvmDetector.GuestArch.X86_64 else KvmDetector.GuestArch.ARM64
             try {
                 val launcher = NativeVmLauncher(this, arch, sshPort, vncPort, spicePort, headless)
-                java.io.File(java.io.File(filesDir, "vm"), "last_command.txt")
-                    .writeText(launcher.buildCommand().joinToString(" "))
-                qemuProcess = launcher.start()
+                val archDir = File(File(filesDir, "vm"), archKey).apply { mkdirs() }
+                File(archDir, "last_command.txt").writeText(launcher.buildCommand().joinToString(" "))
+                processes[archKey] = launcher.start()
+                updateNotification()
             } catch (e: Exception) {
-                Toast.makeText(this, "VM failed to start: ${e.message}", Toast.LENGTH_LONG).show()
-                stopSelf()
+                Toast.makeText(this, "VM $archKey failed to start: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
 
         return START_STICKY
     }
 
-    fun isRunning(): Boolean = qemuProcess?.isAlive == true
+    fun isRunning(archKey: String): Boolean = processes[archKey]?.isAlive == true
+
+    fun getProcess(archKey: String): Process? = processes[archKey]?.takeIf { it.isAlive }
+
+    /** Stops one architecture's VM only — the other keeps running untouched. */
+    fun stopVm(archKey: String) {
+        processes[archKey]?.let { proc ->
+            proc.destroy()
+            processes.remove(archKey)
+        }
+        updateNotification()
+        if (processes.isEmpty()) {
+            stopSelf()
+        }
+    }
+
+    fun runningArches(): List<String> = processes.keys.filter { isRunning(it) }
 
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
-        qemuProcess?.destroy()
-        qemuProcess = null
+        processes.values.forEach { it.destroy() }
+        processes.clear()
         super.onDestroy()
+    }
+
+    private fun updateNotification() {
+        getSystemService(NotificationManager::class.java).notify(1, buildNotification())
+    }
+
+    private fun buildNotification(): Notification {
+        val running = runningArches()
+        val text = if (running.isEmpty()) "No VM running"
+        else "Running: ${running.joinToString(", ")}"
+        return Notification.Builder(this, channelId)
+            .setContentTitle("vm-forge")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .build()
     }
 }

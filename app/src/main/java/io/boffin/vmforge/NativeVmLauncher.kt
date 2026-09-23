@@ -42,8 +42,14 @@ class NativeVmLauncher(
     private val nativeLibDir: File
         get() = File(context.applicationInfo.nativeLibraryDir)
 
+    /** Per-architecture VM slot: files/vm/arm64 and files/vm/x86_64 store their
+     *  own disk image, seed ISO, UEFI firmware, and last-command log so the two
+     *  architectures can run at the same time without stamping on each other. */
     private val vmDir: File
-        get() = File(context.filesDir, "vm").apply { mkdirs() }
+        get() = File(File(context.filesDir, "vm"), archDirName).apply { mkdirs() }
+
+    private val archDirName: String
+        get() = if (guestArch == KvmDetector.GuestArch.X86_64) "x86_64" else "arm64"
 
     private val archSuffix: String
         get() = if (guestArch == KvmDetector.GuestArch.X86_64) "x86_64" else "aarch64"
@@ -65,9 +71,8 @@ class NativeVmLauncher(
     fun buildCommand(): List<String> {
         val accel = KvmDetector.detect(guestArch)
         val qemuBinary = File(nativeLibDir, "libqemu_system_$archSuffix.so")
-        // Single VM slot for now — whichever architecture is selected uses
-        // the same rootfs.qcow2/seed.iso names (import the matching image
-        // for whichever arch you're about to start).
+        // Each architecture has its own rootfs.qcow2/seed.iso inside its own
+        // vm/<arch> slot, so ARM64 and x86_64 images never collide.
         val disk = File(vmDir, "rootfs.qcow2")
         val seedIso = File(vmDir, "seed.iso")
 

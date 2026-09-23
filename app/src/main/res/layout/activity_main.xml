@@ -1,159 +1,299 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-<LinearLayout
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center">
-
-    <TextView
-        android:id="@+id/accelStatus"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="16sp"
-        android:paddingBottom="8dp" />
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Guest architecture:"
-        android:textSize="14sp" />
-
-    <RadioGroup
-        android:id="@+id/archRadioGroup"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingBottom="16dp">
-
-        <RadioButton
-            android:id="@+id/archArm64"
-            android:layout_width="0dp"
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/mainTabs"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:checked="true"
-            android:text="ARM64" />
+            app:tabMode="fixed">
 
-        <RadioButton
-            android:id="@+id/archX86_64"
-            android:layout_width="0dp"
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ARM64 VM" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="x86_64 VM" />
+
+            <com.google.android.material.tabs.TabItem
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Proot" />
+        </com.google.android.material.tabs.TabLayout>
+
+        <!-- ============ ARM64 tab ============ -->
+        <LinearLayout
+            android:id="@+id/sectionArm64"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="x86_64 (AMD64)" />
-    </RadioGroup>
+            android:orientation="vertical"
+            android:visibility="gone">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Ports (leave blank for defaults; VNC/SPICE off unless set):"
-        android:textSize="14sp" />
+            <TextView
+                android:id="@+id/accelStatusArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
 
-    <EditText
-        android:id="@+id/sshPortInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="SSH port (default 2222)"
-        android:inputType="number" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ports (blank = default; VNC/SPICE off unless set):"
+                android:textSize="14sp" />
 
-    <EditText
-        android:id="@+id/vncPortInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="VNC port (blank = disabled)"
-        android:inputType="number" />
+            <EditText
+                android:id="@+id/sshPortArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="SSH port (default 2222)"
+                android:inputType="number" />
 
-    <EditText
-        android:id="@+id/spicePortInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="SPICE port (blank = disabled)"
-        android:inputType="number" />
+            <EditText
+                android:id="@+id/vncPortArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="VNC port (blank = disabled)"
+                android:inputType="number" />
 
-    <CheckBox
-        android:id="@+id/headlessCheckbox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:checked="true"
-        android:text="Headless (-nographic, disable for VNC/SPICE display output)" />
+            <EditText
+                android:id="@+id/spicePortArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="SPICE port (blank = disabled)"
+                android:inputType="number" />
 
-    <Button
-        android:id="@+id/startVmButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Start VM" />
+            <CheckBox
+                android:id="@+id/headlessArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:checked="true"
+                android:text="Headless (-nographic, disable for VNC/SPICE display output)" />
 
-    <Button
-        android:id="@+id/stopVmButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Stop VM" />
+            <Button
+                android:id="@+id/startVmButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Start ARM64 VM" />
 
-    <Button
-        android:id="@+id/openTerminalButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Open Terminal" />
+            <Button
+                android:id="@+id/stopVmButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Stop ARM64 VM" />
 
-    <Button
-        android:id="@+id/viewCommandButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="View Last Launch Command" />
+            <Button
+                android:id="@+id/openTerminalButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Open Terminal (ARM64)" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Import VM disk files (no adb needed; overwrites whichever image is currently loaded — import the file matching the arch selected above):"
-        android:textSize="14sp" />
+            <Button
+                android:id="@+id/viewCommandButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="View Last Launch Command (ARM64)" />
 
-    <Button
-        android:id="@+id/importDiskButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Import rootfs.qcow2" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Import ARM64 VM disk files (no adb needed):"
+                android:textSize="14sp" />
 
-    <Button
-        android:id="@+id/importSeedButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Import seed.iso" />
+            <Button
+                android:id="@+id/importDiskButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Import rootfs.qcow2 (ARM64)" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="24dp"
-        android:background="#33000000" />
+            <Button
+                android:id="@+id/importSeedButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Import seed.iso (ARM64)" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Proot Forge (integrated PRoot/Boffin container — no VM/boot needed, shares this device's kernel; install a rootfs via URL inside the terminal)"
-        android:textSize="14sp"
-        android:textStyle="bold" />
+            <Button
+                android:id="@+id/clearDataButtonArm64"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Clear ARM64 disk images" />
+        </LinearLayout>
 
-    <Button
-        android:id="@+id/openProotForgeButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Open Proot Forge Terminal" />
+        <!-- ============ x86_64 tab ============ -->
+        <LinearLayout
+            android:id="@+id/sectionX86"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
 
-</LinearLayout>
+            <TextView
+                android:id="@+id/accelStatusX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ports (blank = default; VNC/SPICE off unless set):"
+                android:textSize="14sp" />
+
+            <EditText
+                android:id="@+id/sshPortX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="SSH port (default 2322)"
+                android:inputType="number" />
+
+            <EditText
+                android:id="@+id/vncPortX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="VNC port (blank = disabled)"
+                android:inputType="number" />
+
+            <EditText
+                android:id="@+id/spicePortX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="SPICE port (blank = disabled)"
+                android:inputType="number" />
+
+            <CheckBox
+                android:id="@+id/headlessX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:checked="true"
+                android:text="Headless (-nographic, disable for VNC/SPICE display output)" />
+
+            <Button
+                android:id="@+id/startVmButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Start x86_64 VM" />
+
+            <Button
+                android:id="@+id/stopVmButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Stop x86_64 VM" />
+
+            <Button
+                android:id="@+id/openTerminalButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Open Terminal (x86_64)" />
+
+            <Button
+                android:id="@+id/viewCommandButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="View Last Launch Command (x86_64)" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Import x86_64 VM disk files (no adb needed):"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/importDiskButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Import rootfs.qcow2 (x86_64)" />
+
+            <Button
+                android:id="@+id/importSeedButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Import seed.iso (x86_64)" />
+
+            <Button
+                android:id="@+id/clearDataButtonX86"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Clear x86_64 disk images" />
+        </LinearLayout>
+
+        <!-- ============ Proot tab ============ -->
+        <LinearLayout
+            android:id="@+id/sectionProot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/rootfsStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Proot Forge (integrated PRoot/Boffin container — no VM/boot needed, shares this device's kernel; install a rootfs via URL inside the terminal)"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/openProotForgeButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Open Proot Forge Terminal" />
+
+            <Button
+                android:id="@+id/clearRootfsButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Clear Boffin rootfs" />
+        </LinearLayout>
+
+    </LinearLayout>
 </ScrollView>

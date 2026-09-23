@@ -32,9 +32,11 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_TARGET = "target"
         const val TARGET_VM = "vm"
+        const val EXTRA_ARCH = "arch" // "arm64" or "x86_64" — which VM console to attach to
     }
 
     private var target = TARGET_VM
+    private var archKey = VmService.ARCH_ARM64
     private var vmService: VmService? = null
     private var bound = false
     private var readerThread: Thread? = null
@@ -50,7 +52,7 @@ class TerminalActivity : AppCompatActivity() {
     // Holds a possibly-incomplete escape sequence split across two read() calls
     private val pending = StringBuilder()
 
-    private fun currentProcess(): Process? = vmService?.qemuProcess
+    private fun currentProcess(): Process? = vmService?.getProcess(archKey)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -70,6 +72,7 @@ class TerminalActivity : AppCompatActivity() {
         setContentView(R.layout.activity_terminal)
 
         target = intent.getStringExtra(EXTRA_TARGET) ?: TARGET_VM
+        archKey = intent.getStringExtra(EXTRA_ARCH) ?: VmService.ARCH_ARM64
 
         outputView = findViewById(R.id.terminalOutput)
         scrollView = findViewById(R.id.terminalScroll)
@@ -93,8 +96,10 @@ class TerminalActivity : AppCompatActivity() {
             imm.showSoftInput(inputField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
 
-        // Ensure the QEMU VM is running, then bind to VmService to get its process streams
-        startForegroundService(Intent(this, VmService::class.java))
+        // Attach to the running QEMU VM's process. Bind-only (no
+        // startForegroundService here): the terminal is for *attaching* to a
+        // VM that the Start button already booted — it must not itself launch
+        // a VM (and definitely not a default-arch one).
         bindService(Intent(this, VmService::class.java), connection, Context.BIND_AUTO_CREATE)
     }
 

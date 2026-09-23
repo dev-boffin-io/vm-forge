@@ -14,11 +14,23 @@ Debian VM entirely on-device, no Termux dependency.
 - `NativeVmLauncher.kt` — launches QEMU straight from
   `applicationInfo.nativeLibraryDir` (where Android extracted the bundled
   binary/libs at install time) with `LD_LIBRARY_PATH` set there
-- `VmService.kt` — foreground service that owns the running QEMU process;
-  bindable, so `TerminalActivity` can read/write its stdio directly
-- `MainActivity.kt` — shows KVM/TCG status, Start/Stop VM, Open Terminal,
-  import buttons for the disk image + cloud-init seed, and the
-  "Open Proot Forge Terminal" entrance to the integrated proot-forge core
+- `VmService.kt` — foreground service that runs **one QEMU process per
+  architecture simultaneously** (ARM64 and x86_64 at the same time is fine);
+  each arch is stopped/started independently, and `TerminalActivity` attaches
+  to whichever arch's console it was opened for
+- `MainActivity.kt` — home screen with three tabs:
+  - **ARM64 VM** / **x86_64 VM** — each an independent, self-contained slot:
+    its own KVM/TCG status, SSH/VNC/SPICE ports, headless toggle, Start/Stop,
+    Open Terminal, "View last launch command", and `Import rootfs.qcow2` /
+    `Import seed.iso` buttons. ARM64 and x86_64 use **different default SSH
+    ports** (2222 vs 2322) and separate `vm/arm64` / `vm/x86_64` directories,
+    so both VMs can run and import images at the same time without
+    colliding. Each slot also has a **"Clear … disk images"** button to wipe
+    its own images/firmware/log without touching the other arch
+  - **Proot** — the "Open Proot Forge Terminal" entrance to the integrated
+    proot-forge core, a live Boffin rootfs status readout, and a
+    **"Clear Boffin rootfs"** button (deletes the downloaded archive and its
+    extracted rootfs so the next session re-installs from scratch)
 - `TerminalActivity.kt` — a minimal interactive console for the VM's
   serial output (ANSI codes stripped for readability; not a full
   VT100 emulator — good for shell use, not for full-screen apps like
@@ -47,21 +59,28 @@ cloud-init seed for the first-boot password. The disk image + seed are
 prepared once (on a PC or via Termux, since they need tools not worth
 bundling into the app itself) and then imported into the app:
 
-1. Get a Debian arm64 cloud image and build a seed ISO — either:
-   - **Via Termux:** run `scripts/test-in-termux.sh` then
-     `scripts/make-seed.sh` (see "How the native binary was collected"
-     below for background) — produces `~/vm-test/debian-13-genericcloud-arm64.qcow2`
-     and `~/vm-test/seed.iso`
+1. Get a Debian cloud image and build a seed ISO — either:
+   - **For the ARM64 tab:** `scripts/make-seed.sh` produces
+     `~/vm-test/debian-13-genericcloud-arm64.qcow2` and `~/vm-test/seed.iso`
+   - **For the x86_64 tab:** do the same with an amd64 cloud image
+     (e.g. `debian-13-genericcloud-amd64.qcow2`)
    - Or prepare equivalent files any other way
-2. Copy both files to somewhere the app's file picker can reach, e.g.
+2. Copy each file to somewhere the app's file picker can reach, e.g.
    `/sdcard/Download/` (`cp ~/vm-test/*.qcow2 ~/vm-test/seed.iso /sdcard/Download/`
    in Termux)
-3. In the app, tap **"Import rootfs.qcow2"** and **"Import seed.iso"**,
-   picking each file from Downloads — this copies them into the app's
-   private storage under the exact names QEMU expects
-4. Tap **"Start VM"**, then **"Open Terminal"** to watch it boot and log in
-   (first-boot password is shown by `make-seed.sh` — save it, it's not
-   shown again)
+3. In the app, on the relevant VM tab, tap **"Import rootfs.qcow2"** and
+   **"Import seed.iso"**, picking each file from Downloads — this copies
+   them into that architecture's own slot (`vm/arm64/` or `vm/x86_64/`)
+   under the exact names QEMU expects. ARM64 and x86_64 keep separate
+   images, so you can have both installed at once
+4. Tap **"Start … VM"**, then **"Open Terminal …"** to watch it boot and log
+   in. SSH is forwarded to **127.0.0.1:2222** for the ARM64 VM and
+   **127.0.0.1:2322** for the x86_64 VM by default (both editable), and
+   both VMs can run at the same time (first-boot password is shown by
+   `make-seed.sh` — save it, it's not shown again)
+5. Want a clean slate? Each VM tab has a **"Clear … disk images"** button,
+   and the Proot tab has **"Clear Boffin rootfs"** — both ask for
+   confirmation before deleting anything.
 
 ## How the native binary was collected (background, not needed day-to-day)
 
