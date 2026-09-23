@@ -160,13 +160,27 @@ class MainActivity : AppCompatActivity() {
 
         val vmDir = File(filesDir, "vm").apply { mkdirs() }
         val dest = File(vmDir, destName)
-        try {
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
+        // Copying multi-GB qcow2/iso on the main thread stalls the UI past
+        // the 5s ANR-WatchDog threshold and the app gets force-killed.
+        // Do it on a background thread and report back on the UI thread.
+        Toast.makeText(this, "Importing $destName (background)…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                }
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Imported as $destName (${dest.length() / 1024 / 1024} MB)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
-            Toast.makeText(this, "Imported as $destName (${dest.length() / 1024 / 1024} MB)", Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+        }.start()
     }
 }
