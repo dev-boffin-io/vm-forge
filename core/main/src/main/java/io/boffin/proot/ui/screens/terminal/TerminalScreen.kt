@@ -37,7 +37,6 @@ import com.rk.settings.Settings
 import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
-import io.boffin.proot.ui.screens.downloader.DebianInstaller
 import io.boffin.proot.ui.screens.downloader.downloadDirectRootfs
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
@@ -114,33 +113,6 @@ fun TerminalScreen(
             onDismiss = { showAddDialog = false },
             onCreateSession = { mode ->
                 when (mode) {
-                    WorkingMode.DEBIAN -> {
-                        if (Rootfs.isRootfsInstalled(context)) {
-                            proceedToCreateSession(mode)
-                        } else {
-                            showAddDialog = false
-                            downloadingMode = mode
-                            downloadError = null
-                            downloadProgress = 0
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    try {
-                                        DebianInstaller.downloadIfNeeded(context) { pct ->
-                                            downloadProgress = pct
-                                        }
-                                        withContext(Dispatchers.Main) {
-                                            downloadingMode = null
-                                            proceedToCreateSession(mode)
-                                        }
-                                    } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) {
-                                            downloadError = e.message ?: e.javaClass.simpleName
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                     WorkingMode.BOFFIN -> {
                         if (Rootfs.isBoffinRootfsInstalled(context)) {
                             proceedToCreateSession(mode)
@@ -164,9 +136,8 @@ fun TerminalScreen(
     }
 
     if (downloadingMode != null) {
-        val label = if (downloadingMode == WorkingMode.DEBIAN) "Debian" else "Boffin"
         RootfsDownloadDialog(
-            label = label,
+            label = "Boffin",
             verb = "Downloading",
             progress = downloadProgress,
             error = downloadError,
@@ -297,11 +268,6 @@ private fun AddSessionDialog(
     val customSessions = remember { CustomSessions.getAll() }
     BasicAlertDialog(onDismissRequest = onDismiss) {
         PreferenceGroup {
-            SettingsCard(
-                title = { Text("Debian") },
-                description = { Text(stringResource(strings.debian_desc)) },
-                onClick = { onCreateSession(WorkingMode.DEBIAN) }
-            )
             SettingsCard(
                 title = { Text("Android") },
                 description = { Text(stringResource(strings.android_desc)) },

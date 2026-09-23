@@ -4,7 +4,6 @@
     <string name="use_shizuku">自动登录 Shizuku</string>
     <string name="use_shizuku_desc">自动执行 rish 命令</string>
     <string name="default_working_mode">默认工作模式</string>
-    <string name="debian_desc">Debian GNU/Linux</string>
     <string name="android_desc">Proot Forge Android Shell</string>
     <string name="customizations">自定义</string>
     <string name="seccomp">SECCOMP</string>

@@ -14,22 +14,6 @@ fun Context.localDir(): File {
     }
 }
 
-fun Context.debianDir(): File {
-    return localDir().child("debian").also {
-        if (!it.exists()) {
-            it.mkdirs()
-        }
-    }
-}
-
-fun Context.debianHomeDir(): File {
-    return debianDir().child("root").also {
-        if (!it.exists()) {
-            it.mkdirs()
-        }
-    }
-}
-
 fun Context.boffinDir(): File {
     return localDir().child("boffin").also {
         if (!it.exists()) {

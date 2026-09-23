@@ -34,7 +34,6 @@ object TerminalUtils {
         if (darkText.value) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White
 
     fun getNameOfWorkingMode(workingMode: Int?): String = when (workingMode) {
-        0 -> "debian"
         1 -> "android"
         3 -> "boffin"
         else -> "unknown"

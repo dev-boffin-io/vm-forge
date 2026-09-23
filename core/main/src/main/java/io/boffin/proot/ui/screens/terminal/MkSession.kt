@@ -7,7 +7,6 @@ import com.rk.libcommons.localBinDir
 import com.rk.libcommons.localDir
 import com.rk.libcommons.localLibDir
 import com.rk.libcommons.boffinHomeDir
-import com.rk.libcommons.debianHomeDir
 import io.boffin.proot.App.Companion.getTempDir
 import io.boffin.proot.BuildConfig
 import io.boffin.proot.ui.screens.settings.WorkingMode
@@ -39,24 +38,14 @@ object MkSession {
 
             val workingDir = pendingCommand?.workingDir ?: when (workingMode) {
                 WorkingMode.BOFFIN -> boffinHomeDir().path
-                else -> debianHomeDir().path
+                else -> "/sdcard"
             }
-
-            val useChroot = workingMode == WorkingMode.DEBIAN && Rootfs.execMode.value == ExecMode.CHROOT
 
             val initFile: File = localBinDir().child("init-host")
             if (initFile.exists().not()) {
                 initFile.createFileIfNot()
                 assets.open("init-host.sh").bufferedReader().use { it.readText() }.let {
                     initFile.writeText(it)
-                }
-            }
-
-            val initChrootFile: File = localBinDir().child("init-host-chroot")
-            if (useChroot && initChrootFile.exists().not()) {
-                initChrootFile.createFileIfNot()
-                assets.open("init-host-chroot.sh").bufferedReader().use { it.readText() }.let {
-                    initChrootFile.writeText(it)
                 }
             }
 
@@ -100,15 +89,9 @@ object MkSession {
                 "PROOT_LOADER=${applicationInfo.nativeLibraryDir}/libloader.so",
                 "PROOT=${applicationInfo.nativeLibraryDir}/libproot.so",
                 "CHROOT=${if (File("/system/bin/chroot").exists()) "/system/bin/chroot" else "/system/xbin/chroot"}",
-                "USE_CHROOT=${if (useChroot) "1" else "0"}",
-                "DISTRO_DIR=${when (workingMode) {
-                    WorkingMode.BOFFIN -> "boffin"
-                    else -> "debian"
-                }}",
-                "DISTRO_ARCHIVE=${when (workingMode) {
-                    WorkingMode.BOFFIN -> "boffin.tar.gz"
-                    else -> "debian.tar.gz"
-                }}",
+                "USE_CHROOT=0",
+                "DISTRO_DIR=${if (workingMode == WorkingMode.BOFFIN) "boffin" else ""}",
+                "DISTRO_ARCHIVE=${if (workingMode == WorkingMode.BOFFIN) "boffin.tar.gz" else ""}",
             )
 
             val loader32 = "${applicationInfo.nativeLibraryDir}/libloader32.so"
@@ -136,9 +119,8 @@ object MkSession {
 
             val args: Array<String>
             val shell = if (pendingCommand == null) {
-                args = if (workingMode == WorkingMode.DEBIAN || workingMode == WorkingMode.BOFFIN) {
-                    val targetInit = if (useChroot) initChrootFile else initFile
-                    arrayOf("-c", targetInit.absolutePath)
+                args = if (workingMode == WorkingMode.BOFFIN) {
+                    arrayOf("-c", initFile.absolutePath)
                 } else {
                     arrayOf()
                 }
@@ -197,10 +179,9 @@ object MkSession {
 
     /**
      * Builds the shell/args for running a script the user opened the app with (via the .sh
-     * VIEW intent filter) inside a chosen session type. Applies the same reasoning as
-     * [createSession] for which init file to run for Debian/Boffin (chroot vs proot only
-     * matters for Debian), a plain custom-session script wrapper when a CustomSession was
-     * picked, or a bare shell invocation for Android.
+     * VIEW intent filter) inside a chosen session type. Boffin runs the script inside the
+     * installed rootfs container (via init-host.sh); a plain custom-session script wrapper
+     * runs when a CustomSession was picked, and Android runs the script directly.
      */
     fun buildScriptPendingCommand(
         context: Context,
@@ -234,10 +215,8 @@ object MkSession {
                     env = null
                 )
             }
-        } else if (workingMode == WorkingMode.DEBIAN || workingMode == WorkingMode.BOFFIN) {
-            val useChroot = workingMode == WorkingMode.DEBIAN && Rootfs.execMode.value == ExecMode.CHROOT
-            val initFile = context.localBinDir()
-                .child(if (useChroot) "init-host-chroot" else "init-host")
+        } else if (workingMode == WorkingMode.BOFFIN) {
+            val initFile = context.localBinDir().child("init-host")
             PendingCommand(
                 shell = "/system/bin/sh",
                 args = arrayOf("-c", initFile.absolutePath, "sh", script.absolutePath),

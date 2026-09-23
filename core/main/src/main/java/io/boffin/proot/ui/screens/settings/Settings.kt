@@ -28,8 +28,6 @@ import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.components.SettingsToggle
 import io.boffin.proot.ui.routes.MainActivityRoutes
 import io.boffin.proot.ui.screens.terminal.CustomSessions
-import io.boffin.proot.ui.screens.terminal.ExecMode
-import io.boffin.proot.ui.screens.terminal.Rootfs
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -86,7 +84,6 @@ fun Settings(
     val context = LocalContext.current
     var selectedWorkingMode by remember { mutableIntStateOf(Settings.working_Mode) }
     var selectedInputMode by remember { mutableIntStateOf(Settings.input_mode) }
-    var selectedExecMode by remember { mutableStateOf(Rootfs.execMode.value) }
     var customSessions by remember { mutableStateOf(CustomSessions.getAll()) }
     var showAddCustomSession by remember { mutableStateOf(false) }
     var defaultIsCustom by remember { mutableStateOf(Settings.default_is_custom) }
@@ -98,16 +95,6 @@ fun Settings(
         onBack = { navController.popBackStack() }
     ) {
         PreferenceGroup(heading = stringResource(strings.default_working_mode)) {
-            WorkingModeOption(
-                title = "Debian",
-                description = stringResource(strings.debian_desc),
-                selected = !defaultIsCustom && selectedWorkingMode == WorkingMode.DEBIAN
-            ) {
-                defaultIsCustom = false
-                Settings.default_is_custom = false
-                selectedWorkingMode = WorkingMode.DEBIAN
-                Settings.working_Mode = WorkingMode.DEBIAN
-            }
             WorkingModeOption(
                 title = "Android",
                 description = stringResource(strings.android_desc),
@@ -129,17 +116,6 @@ fun Settings(
                     Settings.default_is_custom = true
                     CustomSessions.setDefault(session.id)
                 }
-            }
-        }
-
-        PreferenceGroup(heading = "Execution Mode") {
-            ExecModeOption("Chroot", "Requires root, faster, real bind mounts", ExecMode.CHROOT, selectedExecMode) {
-                selectedExecMode = it
-                Rootfs.setExecMode(it)
-            }
-            ExecModeOption("Proot", "No root required, slightly slower", ExecMode.PROOT, selectedExecMode) {
-                selectedExecMode = it
-                Rootfs.setExecMode(it)
             }
         }
 
@@ -265,22 +241,6 @@ private fun WorkingModeOption(title: String, description: String, selected: Bool
 
 @Composable
 private fun InputModeOption(title: String, description: String, mode: Int, currentMode: Int, onSelect: (Int) -> Unit) {
-    SettingsCard(
-        title = { Text(title) },
-        description = { Text(description) },
-        startWidget = {
-            RadioButton(
-                modifier = Modifier.padding(start = 8.dp),
-                selected = currentMode == mode,
-                onClick = { onSelect(mode) }
-            )
-        },
-        onClick = { onSelect(mode) }
-    )
-}
-
-@Composable
-private fun ExecModeOption(title: String, description: String, mode: ExecMode, currentMode: ExecMode?, onSelect: (ExecMode) -> Unit) {
     SettingsCard(
         title = { Text(title) },
         description = { Text(description) },

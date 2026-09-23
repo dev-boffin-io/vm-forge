@@ -4,7 +4,6 @@
     <string name="use_shizuku">Auto Login to shizuku</string>
     <string name="use_shizuku_desc">Automatically execute rish command</string>
     <string name="default_working_mode">Default Working mode</string>
-    <string name="debian_desc">Debian GNU/Linux</string>
     <string name="android_desc">Proot Forge Android Shell</string>
     <string name="customizations">Customizations</string>
     <string name="seccomp">SECCOMP</string>

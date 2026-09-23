@@ -83,16 +83,12 @@ object Settings {
         set(value) = Preference.setFloat(key = "wallTransparency",value)
 
     var working_Mode
-        get() = Preference.getInt(key = "workingMode", default = WorkingMode.DEBIAN)
+        get() = Preference.getInt(key = "workingMode", default = WorkingMode.ANDROID)
         set(value) = Preference.setInt(key = "workingMode",value)
 
     var input_mode
         get() = Preference.getInt(key = "input_mode", default = InputMode.DEFAULT)
         set(value) = Preference.setInt(key = "input_mode", value)
-
-    var exec_mode
-        get() = Preference.getInt(key = "exec_mode", default = -1)
-        set(value) = Preference.setInt(key = "exec_mode", value)
 
     var default_is_custom
         get() = Preference.getBoolean(key = "default_is_custom", default = false)

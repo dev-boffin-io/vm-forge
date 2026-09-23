@@ -106,7 +106,5 @@
             </intent-filter>
         </activity>
 
-        <!-- com.rk.DebianDocumentProvider is merged in from core/main's manifest -->
-
     </application>
 </manifest>

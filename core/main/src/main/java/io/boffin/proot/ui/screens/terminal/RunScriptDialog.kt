@@ -33,7 +33,7 @@ fun RunScriptDialog(
     onRun: (Int, CustomSession?) -> Unit
 ) {
     val customSessions = remember { CustomSessions.getAll() }
-    var selectedMode by remember { mutableIntStateOf(WorkingMode.DEBIAN) }
+    var selectedMode by remember { mutableIntStateOf(WorkingMode.ANDROID) }
     var selectedCustom by remember { mutableStateOf<CustomSession?>(null) }
     var selectedIsCustom by remember { mutableStateOf(false) }
 
@@ -59,11 +59,6 @@ fun RunScriptDialog(
                     style = MaterialTheme.typography.labelLarge
                 )
                 Spacer(Modifier.height(8.dp))
-                ScriptSessionOption(
-                    title = "Debian",
-                    description = stringResource(strings.debian_desc),
-                    selected = !selectedIsCustom && selectedMode == WorkingMode.DEBIAN
-                ) { select(WorkingMode.DEBIAN, null, false) }
                 ScriptSessionOption(
                     title = "Android",
                     description = stringResource(strings.android_desc),

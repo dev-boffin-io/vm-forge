@@ -1,5 +1,5 @@
-DISTRO_DIR=${DISTRO_DIR:-debian}
-DISTRO_ARCHIVE=${DISTRO_ARCHIVE:-debian.tar.gz}
+DISTRO_DIR=${DISTRO_DIR:-boffin}
+DISTRO_ARCHIVE=${DISTRO_ARCHIVE:-boffin.tar.gz}
 ROOTFS_DIR=$PREFIX/local/$DISTRO_DIR
 
 mkdir -p $ROOTFS_DIR
@@ -8,7 +8,7 @@ if [ -z "$(ls -A "$ROOTFS_DIR" | grep -vE '^(root|tmp)$')" ]; then
     tar -xf "$PREFIX/files/$DISTRO_ARCHIVE" -C "$ROOTFS_DIR"
 fi
 
-# The official Debian rootfs tarballs ship without /etc/resolv.conf (it is normally
+# Rootfs archives ship without /etc/resolv.conf (it is normally
 # provided by the container runtime), so drop in a static one or DNS won't work at all.
 if [ ! -e "$ROOTFS_DIR/etc/resolv.conf" ]; then
     mkdir -p "$ROOTFS_DIR/etc"
@@ -16,7 +16,7 @@ if [ ! -e "$ROOTFS_DIR/etc/resolv.conf" ]; then
 fi
 
 # Only install the busybox-based rm wrapper when the rootfs actually ships busybox
-# (the Alpine-based Kali rootfs did; official Debian rootfs tarballs do not).
+# (e.g. Debian-based Boffin rootfs archives ship /bin/busybox; some minimal ones do not).
 if [ -f "$BIN/rm" ] && { [ -x "$ROOTFS_DIR/bin/busybox" ] || [ -x "$ROOTFS_DIR/usr/bin/busybox" ]; }; then
     rm -f "$ROOTFS_DIR/bin/rm"
     cp "$BIN/rm" "$ROOTFS_DIR/bin/rm"
