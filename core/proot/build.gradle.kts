@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.rk.proot"
-    ndkVersion = "29.0.13846066"
+    ndkVersion = "29.0.14206865"
     compileSdk {
         version = release(36)
     }
