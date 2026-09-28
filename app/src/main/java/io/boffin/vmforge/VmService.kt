@@ -56,7 +56,15 @@ class VmService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, buildNotification())
+        // A foreground-service failure here would abort onStartCommand before
+        // the process is registered, leaving an empty map that the terminal
+        // later misreports as a start timeout. Report it instead of dying.
+        try {
+            startForeground(1, buildNotification())
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to enter foreground: ${e.message}", Toast.LENGTH_LONG).show()
+            return START_NOT_STICKY
+        }
         updateNotification()
 
         val archKey = intent?.getStringExtra(EXTRA_ARCH) ?: ARCH_ARM64
@@ -78,12 +86,32 @@ class VmService : Service() {
             }
         }
 
-        return START_STICKY
+        // NOT sticky: a restart after a kill is delivered with a null intent, so
+        // the arch, SSH port and disk path are all unknown. START_STICKY would
+        // fall through to the `?: ARCH_ARM64` default above and silently boot a
+        // second, wrong-architecture VM on the default port. Each Start tap
+        // re-sends a full intent anyway, so there is nothing to preserve.
+        return START_NOT_STICKY
     }
 
     fun isRunning(archKey: String): Boolean = processes[archKey]?.isAlive == true
 
-    fun getProcess(archKey: String): Process? = processes[archKey]?.takeIf { it.isAlive }
+    /**
+     * The QEMU [Process] registered for [archKey], or null if one was never
+     * started for that arch.
+     *
+     * Deliberately does NOT filter on `isAlive` (unlike [isRunning]). A QEMU
+     * process that has already exited still owns buffered stdio holding its
+     * fatal error text, and the caller needs to reach it to drain that output
+     * and read the exit code. Returning null for a dead-but-present process
+     * made every distinct failure look identical to "never started", which is
+     * how a crashed QEMU ended up reported as a start timeout.
+     */
+    fun getProcess(archKey: String): Process? = processes[archKey]
+
+    /** True once a process for [archKey] has been registered, alive or not.
+     *  Lets the console tell "not started yet" apart from "started and died". */
+    fun wasStarted(archKey: String): Boolean = processes.containsKey(archKey)
 
     /** Stops one architecture's VM only — the other keeps running untouched. */
     fun stopVm(archKey: String) {

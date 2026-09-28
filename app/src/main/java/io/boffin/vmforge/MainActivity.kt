@@ -231,6 +231,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(terminalId).setOnClickListener {
+            // Attaching is only meaningful for a live QEMU process — the console
+            // has nothing to read otherwise. Fail fast with the fix, the way Stop
+            // already checks isRunning, instead of opening a console that can
+            // only ever report that nothing is there.
+            //
+            // Only block when the service is bound and positively reports the
+            // VM down. If the bind hasn't landed yet we let the user through and
+            // let the console's own wait/report handle it, so a slow bind can
+            // never produce a false "not running".
+            val svc = vmService
+            if (svc != null && !svc.isRunning(tab.dirName)) {
+                Toast.makeText(
+                    this,
+                    "${tab.arch.label} VM is not running — press Start first",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
             startActivity(Intent(this, TerminalActivity::class.java).apply {
                 putExtra(TerminalActivity.EXTRA_TARGET, TerminalActivity.TARGET_VM)
                 putExtra(TerminalActivity.EXTRA_ARCH, tab.dirName)
