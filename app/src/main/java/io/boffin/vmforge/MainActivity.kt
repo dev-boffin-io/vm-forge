@@ -19,6 +19,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.tabs.TabLayout
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Home screen. Three independent subsystems, one tab each:
@@ -98,6 +100,14 @@ class MainActivity : AppCompatActivity() {
 
     private var vmService: VmService? = null
     private var bound = false
+
+    // Recursive filesystem work over a whole rootfs (tens of thousands of
+    // entries) or multi-GB qcow2 deletes takes far longer than the 5s
+    // ANR-WatchDog threshold, so it must never run on the main thread.
+    // Single thread: the work is disk-bound, so serialising it keeps rapid
+    // taps from piling up duplicate walks of the same tree.
+    private val diskIo: ExecutorService = Executors.newSingleThreadExecutor()
+    private var rootfsStatusGeneration = 0
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -297,12 +307,19 @@ class MainActivity : AppCompatActivity() {
                         "The ARM64 and x86_64 slots are independent, so the other architecture is untouched."
                 )
                 .setPositiveButton("Clear") { _, _ ->
-                    val ok = dir.deleteRecursively()
-                    Toast.makeText(
-                        this,
-                        if (ok) "${tab.arch.label} VM slot cleared" else "Clear failed (some files may be in use)",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    diskIo.execute {
+                        val ok = dir.deleteRecursively()
+                        // vmDir() always mkdirs on the way out, so restore the
+                        // invariant the import/start paths rely on.
+                        dir.mkdirs()
+                        runOnUiThread {
+                            Toast.makeText(
+                                this,
+                                if (ok) "${tab.arch.label} VM slot cleared" else "Clear failed (some files may be in use)",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
@@ -323,8 +340,9 @@ class MainActivity : AppCompatActivity() {
                 .setTitle("Clear Boffin rootfs?")
                 .setMessage("Permanently delete the downloaded archive (boffin.tar.gz) AND its extracted rootfs, so the next session re-installs from scratch.")
                 .setPositiveButton("Clear") { _, _ ->
+                    // clearBoffinRootfs re-runs refreshRootfsStatus itself, once
+                    // the delete has actually landed.
                     clearBoffinRootfs()
-                    refreshRootfsStatus()
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
@@ -339,15 +357,33 @@ class MainActivity : AppCompatActivity() {
         File(filesDir, "boffin.tar.gz") to File(localDir(), "boffin")
 
     private fun refreshRootfsStatus() {
+        val status = rootfsStatus()
         val (archive, extracted) = boffinRootfsFiles()
-        val archiveMb = if (archive.exists()) archive.length() / 1024 / 1024 else 0L
-        val extractedMb = if (extracted.isDirectory) extracted.walkTopDown().map { it.length() }.sum() / 1024 / 1024 else 0L
-        rootfsStatus().text = when {
-            archive.exists() && extracted.isDirectory ->
+        val generation = ++rootfsStatusGeneration
+        diskIo.execute {
+            // Queued on a single thread, so a newer generation already being
+            // queued means this walk is redundant — skip it instead of
+            // walking the whole tree again just to throw the result away.
+            if (generation != rootfsStatusGeneration) return@execute
+            val text = describeRootfsStatus(archive, extracted)
+            runOnUiThread {
+                if (generation == rootfsStatusGeneration && !isDestroyed) status.text = text
+            }
+        }
+    }
+
+    private fun describeRootfsStatus(archive: File, extracted: File): String {
+        val archiveExists = archive.exists()
+        val extractedExists = extracted.isDirectory
+        val archiveMb = if (archiveExists) archive.length() / 1024 / 1024 else 0L
+        val extractedMb =
+            if (extractedExists) extracted.walkTopDown().sumOf { it.length() } / 1024 / 1024 else 0L
+        return when {
+            archiveExists && extractedExists ->
                 "Boffin rootfs installed (archive $archiveMb MB, extracted $extractedMb MB)"
-            archive.exists() ->
+            archiveExists ->
                 "Boffin archive downloaded, not yet extracted ($archiveMb MB)"
-            extracted.isDirectory ->
+            extractedExists ->
                 "Boffin rootfs extracted ($extractedMb MB)"
             else ->
                 "No Boffin rootfs — open Proot Forge Terminal and install one (URL) to set it up"
@@ -358,9 +394,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearBoffinRootfs() {
         val (archive, extracted) = boffinRootfsFiles()
-        archive.delete()
-        File(filesDir, "boffin.tar.gz.part").delete()
-        extracted.deleteRecursively()
+        val partial = File(filesDir, "boffin.tar.gz.part")
+        diskIo.execute {
+            archive.delete()
+            partial.delete()
+            extracted.deleteRecursively()
+            runOnUiThread { refreshRootfsStatus() }
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -403,6 +443,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        diskIo.shutdown()
         if (bound) {
             unbindService(connection)
             bound = false
